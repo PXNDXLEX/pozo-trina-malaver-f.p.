@@ -180,6 +180,11 @@ const LoginCard = styled.div`
   z-index: 10;
   animation: fadeIn 0.4s ease-out;
 
+  @media (max-width: 480px) {
+    padding: 32px 20px;
+    border-radius: 16px;
+  }
+
   h2 {
     font-size: 24px;
     font-weight: 700;
