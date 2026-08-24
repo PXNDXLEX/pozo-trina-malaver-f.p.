@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useMemo } from "react";
 import { MenuTemplate } from "../templates/MenuTemplate";
 import { supabase } from "../supabase/supabase.config";
 import {
@@ -14,21 +14,21 @@ import {
   Legend
 } from "recharts";
 import styled from "styled-components";
-import { MdTrendingUp, MdAttachMoney, MdLocalShipping } from "react-icons/md";
+import { MdTrendingUp, MdAttachMoney, MdLocalShipping, MdCalendarToday } from "react-icons/md";
 
 export function Home() {
-  const [dataBarras, setDataBarras] = useState([]);
-  const [dataLineas, setDataLineas] = useState([]);
-  const [metricas, setMetricas] = useState({ totalIngresos: 0, totalCargas: 0, promedio: 0 });
+  const [dataRaw, setDataRaw] = useState([]);
+  const [filtroDias, setFiltroDias] = useState(3650); // 3650 = Todo el histórico por defecto
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     fetchVentas();
-  }, []);
+  }, [filtroDias]);
 
   const fetchVentas = async () => {
+    setLoading(true);
     try {
-      const { data, error } = await supabase
+      let query = supabase
         .from("registros_carga")
         .select(`
           monto,
@@ -37,65 +37,99 @@ export function Home() {
         `)
         .order("fecha_carga", { ascending: true });
 
+      // Si el filtro no es "Todo el histórico" (3650), aplicamos el filtro de fecha
+      if (filtroDias !== 3650) {
+        const fechaLimite = new Date();
+        fechaLimite.setDate(fechaLimite.getDate() - filtroDias);
+        query = query.gte("fecha_carga", fechaLimite.toISOString());
+      }
+
+      const { data, error } = await query;
       if (error) throw error;
 
-      const acumuladorCamiones = {};
-      const acumuladorFechas = {};
-      let acumuladoGeneral = 0;
-
-      data.forEach((item) => {
-        const nombreCamion = item.camiones
-          ? `${item.camiones.chofer.trim()} (${item.camiones.placa.trim()})`
-          : "Desconocido";
-
-        const montoNumerico = Number(item.monto) || 0;
-        acumuladoGeneral += montoNumerico;
-
-        if (acumuladorCamiones[nombreCamion]) {
-          acumuladorCamiones[nombreCamion] += montoNumerico;
-        } else {
-          acumuladorCamiones[nombreCamion] = montoNumerico;
-        }
-
-        const fechaLimpia = item.fecha_carga ? item.fecha_carga.substring(0, 10) : "Sin fecha";
-
-        if (acumuladorFechas[fechaLimpia]) {
-          acumuladorFechas[fechaLimpia] += montoNumerico;
-        } else {
-          acumuladorFechas[fechaLimpia] = montoNumerico;
-        }
-      });
-
-      const formatoBarras = Object.keys(acumuladorCamiones).map((key) => ({
-        camionIdentificador: key,
-        montoTotal: acumuladorCamiones[key],
-      }));
-
-      const formatoLineas = Object.keys(acumuladorFechas).map((fecha) => ({
-        fecha: fecha,
-        monto: acumuladorFechas[fecha],
-      }));
-
-      setDataBarras(formatoBarras);
-      setDataLineas(formatoLineas);
-      setMetricas({
-        totalIngresos: acumuladoGeneral,
-        totalCargas: data.length,
-        promedio: data.length > 0 ? (acumuladoGeneral / data.length).toFixed(2) : 0,
-      });
+      setDataRaw(data || []);
     } catch (error) {
-      console.error("Error al cargar analíticas en Recharts:", error.message);
+      console.error("Error al cargar analíticas:", error.message);
     } finally {
       setLoading(false);
     }
+  };
+
+  // Procesar datos para gráficos y métricas
+  const { dataBarras, dataLineas, metricas } = useMemo(() => {
+    const acumuladorCamiones = {};
+    const acumuladorFechas = {};
+    let acumuladoGeneral = 0;
+
+    dataRaw.forEach((item) => {
+      const nombreCamion = item.camiones
+        ? `${item.camiones.chofer.trim()} (${item.camiones.placa.trim()})`
+        : "Desconocido";
+
+      const montoNumerico = Number(item.monto) || 0;
+      acumuladoGeneral += montoNumerico;
+
+      if (acumuladorCamiones[nombreCamion]) {
+        acumuladorCamiones[nombreCamion] += montoNumerico;
+      } else {
+        acumuladorCamiones[nombreCamion] = montoNumerico;
+      }
+
+      const fechaLimpia = item.fecha_carga ? item.fecha_carga.substring(0, 10) : "Sin fecha";
+
+      if (acumuladorFechas[fechaLimpia]) {
+        acumuladorFechas[fechaLimpia] += montoNumerico;
+      } else {
+        acumuladorFechas[fechaLimpia] = montoNumerico;
+      }
+    });
+
+    const formatoBarras = Object.keys(acumuladorCamiones).map((key) => ({
+      camionIdentificador: key,
+      montoTotal: acumuladorCamiones[key],
+    }));
+
+    const formatoLineas = Object.keys(acumuladorFechas).map((fecha) => ({
+      fecha: fecha,
+      monto: acumuladorFechas[fecha],
+    }));
+
+    return {
+      dataBarras: formatoBarras,
+      dataLineas: formatoLineas,
+      metricas: {
+        totalIngresos: acumuladoGeneral,
+        totalCargas: dataRaw.length,
+        promedio: dataRaw.length > 0 ? (acumuladoGeneral / dataRaw.length).toFixed(2) : "0.00",
+      },
+    };
+  }, [dataRaw]);
+
+  // Formateador de moneda en español ($ X.XXX)
+  const formatearDinero = (val) => {
+    return "$" + Number(val).toLocaleString("es-ES", { minimumFractionDigits: 0, maximumFractionDigits: 2 });
   };
 
   return (
     <MenuTemplate>
       <DashboardContainer>
         <HeaderSection>
-          <h2>📊 Dashboard - Pozo Trina Malaver</h2>
-          <p className="subtitle">Monitoreo operativo y financiero en tiempo real</p>
+          <div>
+            <h2>📊 Dashboard - Pozo Trina Malaver</h2>
+            <p className="subtitle">Monitoreo operativo y financiero en tiempo real</p>
+          </div>
+
+          {/* SELECTOR DE RANGO DE TIEMPO SINCRO */}
+          <FilterControl>
+            <MdCalendarToday className="calendar-icon" />
+            <select value={filtroDias} onChange={(e) => setFiltroDias(Number(e.target.value))}>
+              <option value={3650}>Todo el Histórico</option>
+              <option value={30}>Últimos 30 días</option>
+              <option value={15}>Últimas 2 semanas</option>
+              <option value={7}>Últimos 7 días</option>
+              <option value={1}>Hoy</option>
+            </select>
+          </FilterControl>
         </HeaderSection>
 
         {loading ? (
@@ -109,8 +143,10 @@ export function Home() {
                   <MdAttachMoney />
                 </div>
                 <div className="info">
-                  <span className="label">Ingresos Totales</span>
-                  <h3 className="value">${metricas.totalIngresos.toLocaleString()}</h3>
+                  <span className="label">
+                    Ingresos Totales {filtroDias === 3650 ? "(Histórico)" : `(${filtroDias} días)`}
+                  </span>
+                  <h3 className="value">{formatearDinero(metricas.totalIngresos)}</h3>
                 </div>
               </MetricCard>
 
@@ -120,7 +156,7 @@ export function Home() {
                 </div>
                 <div className="info">
                   <span className="label">Total Cargas / Ventas</span>
-                  <h3 className="value">{metricas.totalCargas}</h3>
+                  <h3 className="value">{metricas.totalCargas} viajes</h3>
                 </div>
               </MetricCard>
 
@@ -130,7 +166,7 @@ export function Home() {
                 </div>
                 <div className="info">
                   <span className="label">Promedio por Carga</span>
-                  <h3 className="value">${metricas.promedio}</h3>
+                  <h3 className="value">{formatearDinero(metricas.promedio)}</h3>
                 </div>
               </MetricCard>
             </MetricsGrid>
@@ -149,10 +185,18 @@ export function Home() {
                       textAnchor="end"
                       height={70}
                       interval={0}
-                      tick={{ fontSize: 11, fill: '#94a3b8' }}
+                      tick={{ fontSize: 11, fill: "#94a3b8" }}
                     />
                     <YAxis stroke="#94a3b8" tick={{ fontSize: 12 }} />
-                    <Tooltip contentStyle={{ backgroundColor: "#151c2c", borderColor: "rgba(0,195,255,0.3)", color: "#fff", borderRadius: "10px" }} />
+                    <Tooltip
+                      formatter={(val) => formatearDinero(val)}
+                      contentStyle={{
+                        backgroundColor: "#151c2c",
+                        borderColor: "rgba(0,195,255,0.3)",
+                        color: "#fff",
+                        borderRadius: "10px",
+                      }}
+                    />
                     <Legend wrapperStyle={{ paddingTop: 15 }} />
                     <Bar name="Monto Acumulado ($)" dataKey="montoTotal" fill="#00c3ff" radius={[6, 6, 0, 0]} />
                   </BarChart>
@@ -166,9 +210,24 @@ export function Home() {
                     <CartesianGrid strokeDasharray="3 3" stroke="rgba(255, 255, 255, 0.08)" />
                     <XAxis dataKey="fecha" stroke="#94a3b8" tick={{ fontSize: 11 }} />
                     <YAxis stroke="#94a3b8" tick={{ fontSize: 12 }} />
-                    <Tooltip contentStyle={{ backgroundColor: "#151c2c", borderColor: "rgba(16,185,129,0.3)", color: "#fff", borderRadius: "10px" }} />
+                    <Tooltip
+                      formatter={(val) => formatearDinero(val)}
+                      contentStyle={{
+                        backgroundColor: "#151c2c",
+                        borderColor: "rgba(16,185,129,0.3)",
+                        color: "#fff",
+                        borderRadius: "10px",
+                      }}
+                    />
                     <Legend />
-                    <Line name="Evolución ($)" type="monotone" dataKey="monto" stroke="#10b981" strokeWidth={3} dot={{ r: 4, fill: '#10b981' }} />
+                    <Line
+                      name="Evolución ($)"
+                      type="monotone"
+                      dataKey="monto"
+                      stroke="#10b981"
+                      strokeWidth={3}
+                      dot={{ r: 4, fill: "#10b981" }}
+                    />
                   </LineChart>
                 </ResponsiveContainer>
               </ChartBox>
@@ -186,7 +245,12 @@ const DashboardContainer = styled.div`
 `;
 
 const HeaderSection = styled.div`
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
   margin-bottom: 24px;
+  flex-wrap: wrap;
+  gap: 16px;
 
   h2 {
     font-size: 24px;
@@ -198,6 +262,37 @@ const HeaderSection = styled.div`
   .subtitle {
     color: #94a3b8;
     font-size: 14px;
+  }
+`;
+
+const FilterControl = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(21, 28, 45, 0.8);
+  border: 1px solid rgba(0, 195, 255, 0.3);
+  padding: 8px 14px;
+  border-radius: 12px;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+
+  .calendar-icon {
+    color: #00c3ff;
+    font-size: 18px;
+  }
+
+  select {
+    background: none;
+    border: none;
+    color: #ffffff;
+    font-size: 14px;
+    font-weight: 600;
+    outline: none;
+    cursor: pointer;
+
+    option {
+      background: #151c2c;
+      color: #ffffff;
+    }
   }
 `;
 
