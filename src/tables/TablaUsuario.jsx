@@ -12,7 +12,8 @@ import {
   MdKey,
   MdBadge,
   MdPerson,
-  MdSecurity
+  MdSecurity,
+  MdAddAlert
 } from "react-icons/md";
 
 export function TablaUsuario() {
@@ -111,7 +112,7 @@ export function TablaUsuario() {
           </IconBadge>
           <div>
             <h2>Gestión de Personal / Usuarios</h2>
-            <p className="subtitle">Consulta, visualiza contraseñas y administra roles de usuarios</p>
+            <p className="subtitle">Consulta, visualiza contraseñas y asigna o modifica claves de acceso</p>
           </div>
         </TitleGroup>
       </HeaderSection>
@@ -136,6 +137,7 @@ export function TablaUsuario() {
                 {usuarios.map((usr) => {
                   const esModoEdicion = editandoUser === usr.id;
                   const claveVisible = visibilidadClaves[usr.id];
+                  const tieneClave = usr.password && usr.password.trim() !== "";
 
                   return (
                     <tr key={usr.id}>
@@ -192,12 +194,12 @@ export function TablaUsuario() {
                             type="text"
                             value={passwordEdit}
                             onChange={(e) => setPasswordEdit(e.target.value)}
-                            placeholder="Nueva clave"
+                            placeholder="Escribe la nueva clave..."
                           />
-                        ) : (
+                        ) : tieneClave ? (
                           <PasswordBox>
                             <span className="password-text">
-                              {claveVisible ? usr.password || "No registrada" : "••••••••"}
+                              {claveVisible ? usr.password : "••••••••"}
                             </span>
                             <EyeButton
                               type="button"
@@ -207,6 +209,10 @@ export function TablaUsuario() {
                               {claveVisible ? <MdVisibilityOff /> : <MdVisibility />}
                             </EyeButton>
                           </PasswordBox>
+                        ) : (
+                          <SetPasswordBadge onClick={() => activarEdicion(usr)} title="Click para asignar una clave a este usuario">
+                            <MdAddAlert /> Sin clave (Asignar)
+                          </SetPasswordBadge>
                         )}
                       </td>
 
@@ -246,6 +252,7 @@ export function TablaUsuario() {
             {usuarios.map((usr) => {
               const esModoEdicion = editandoUser === usr.id;
               const claveVisible = visibilidadClaves[usr.id];
+              const tieneClave = usr.password && usr.password.trim() !== "";
 
               return (
                 <UserCard key={usr.id}>
@@ -280,7 +287,7 @@ export function TablaUsuario() {
                         type="text"
                         value={passwordEdit}
                         onChange={(e) => setPasswordEdit(e.target.value)}
-                        placeholder="Nueva clave"
+                        placeholder="Escribe la nueva clave..."
                       />
 
                       <CardActions>
@@ -306,17 +313,23 @@ export function TablaUsuario() {
 
                       <CardRow>
                         <span className="label"><MdKey /> Clave:</span>
-                        <PasswordBox>
-                          <span className="password-text">
-                            {claveVisible ? usr.password || "No registrada" : "••••••••"}
-                          </span>
-                          <EyeButton
-                            type="button"
-                            onClick={() => toggleMostrarClave(usr.id)}
-                          >
-                            {claveVisible ? <MdVisibilityOff /> : <MdVisibility />}
-                          </EyeButton>
-                        </PasswordBox>
+                        {tieneClave ? (
+                          <PasswordBox>
+                            <span className="password-text">
+                              {claveVisible ? usr.password : "••••••••"}
+                            </span>
+                            <EyeButton
+                              type="button"
+                              onClick={() => toggleMostrarClave(usr.id)}
+                            >
+                              {claveVisible ? <MdVisibilityOff /> : <MdVisibility />}
+                            </EyeButton>
+                          </PasswordBox>
+                        ) : (
+                          <SetPasswordBadge onClick={() => activarEdicion(usr)}>
+                            <MdAddAlert /> Sin clave (Asignar)
+                          </SetPasswordBadge>
+                        )}
                       </CardRow>
 
                       <CardActions>
@@ -339,7 +352,7 @@ export function TablaUsuario() {
   );
 }
 
-// 🎨 STYLED COMPONENTS MODERN GLASSMORPHISM FOR USERS TABLE
+// 🎨 STYLED COMPONENTS GLASSMORPHISM TABLE
 const Container = styled.div`
   animation: fadeIn 0.3s ease-out;
 `;
@@ -495,7 +508,7 @@ const PasswordBox = styled.div`
   align-items: center;
   gap: 8px;
   background: rgba(15, 23, 42, 0.6);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(0, 195, 255, 0.3);
   padding: 6px 10px;
   border-radius: 8px;
 
@@ -505,6 +518,26 @@ const PasswordBox = styled.div`
     color: #00c3ff;
     letter-spacing: 1px;
     min-width: 80px;
+  }
+`;
+
+const SetPasswordBadge = styled.button`
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(245, 158, 11, 0.15);
+  color: #f59e0b;
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  padding: 6px 10px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+
+  &:hover {
+    background: #f59e0b;
+    color: #0b0f19;
   }
 `;
 
