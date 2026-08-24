@@ -115,7 +115,12 @@ export function LoginTemplate() {
           </SubmitButton>
         </form>
 
-        <FooterOtto className="footer-otto">otto 2026</FooterOtto>
+        <FooterOtto className="footer-otto">
+          <p>© 2026 Pozo Trina Malaver F.P. · Todos los derechos reservados</p>
+          <span className="dev-tag">
+            Desarrollado por <strong>Otto</strong>
+          </span>
+        </FooterOtto>
       </LoginCard>
     </Container>
   );
@@ -289,10 +294,33 @@ const SubmitButton = styled.button`
 `;
 
 const FooterOtto = styled.footer`
-  margin-top: 28px;
-  font-size: 13px;
-  color: #64748b;
+  margin-top: 32px;
   border-top: 1px solid rgba(255, 255, 255, 0.08);
-  padding-top: 18px;
-  letter-spacing: 1px;
+  padding-top: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: center;
+
+  p {
+    font-size: 12px;
+    color: #64748b;
+    margin: 0;
+    line-height: 1.4;
+  }
+
+  .dev-tag {
+    font-size: 11px;
+    color: #94a3b8;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    padding: 4px 12px;
+    border-radius: 20px;
+    letter-spacing: 0.5px;
+
+    strong {
+      color: #00c3ff;
+      font-weight: 700;
+    }
+  }
 `;
