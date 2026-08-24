@@ -34,6 +34,7 @@ export function FormularioUsuario({ onUsuarioRegistrado, onCancelar }) {
             id: authData.user.id,
             cedula,
             nombre,
+            email,
             rol,
             activo: true
           }
