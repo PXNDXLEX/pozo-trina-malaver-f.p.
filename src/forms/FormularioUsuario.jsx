@@ -28,27 +28,39 @@ export function FormularioUsuario({ onUsuarioRegistrado }) {
       }
 
       if (authData?.user) {
-        const { error: profileError } = await supabase.from("perfiles").insert([
-          {
-            id: authData.user.id,
-            cedula,
-            nombre,
-            email,
-            password,
-            rol,
-            activo: true,
-          },
-        ]);
+        const perfilBase = {
+          id: authData.user.id,
+          cedula,
+          nombre,
+          email,
+          rol,
+          activo: true,
+        };
+
+        // Intentamos guardar incluyendo la clave
+        const { error: profileError } = await supabase
+          .from("perfiles")
+          .insert([{ ...perfilBase, password }]);
 
         if (profileError) {
-          alert(`Error al guardar perfil: ${profileError.message}`);
+          // Si la columna 'password' no existe aún en la tabla de Supabase (PGRST204)
+          if (profileError.code === "PGRST204" || profileError.message.includes("password")) {
+            const { error: fallbackError } = await supabase
+              .from("perfiles")
+              .insert([perfilBase]);
+
+            if (fallbackError) {
+              alert(`Error al guardar perfil: ${fallbackError.message}`);
+            } else {
+              alert("🎉 ¡Usuario registrado con éxito! (Nota: Agrega la columna 'password' en Supabase para habilitar la visualización de la clave).");
+              limpiarFormulario();
+            }
+          } else {
+            alert(`Error al guardar perfil: ${profileError.message}`);
+          }
         } else {
           alert("🎉 ¡Usuario registrado con éxito!");
-          setNombre("");
-          setCedula("");
-          setEmail("");
-          setPassword("");
-          if (onUsuarioRegistrado) onUsuarioRegistrado();
+          limpiarFormulario();
         }
       }
     } catch (error) {
@@ -57,6 +69,14 @@ export function FormularioUsuario({ onUsuarioRegistrado }) {
     } finally {
       setLoading(false);
     }
+  };
+
+  const limpiarFormulario = () => {
+    setNombre("");
+    setCedula("");
+    setEmail("");
+    setPassword("");
+    if (onUsuarioRegistrado) onUsuarioRegistrado();
   };
 
   return (

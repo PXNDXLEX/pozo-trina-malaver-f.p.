@@ -95,7 +95,26 @@ export function TablaUsuario() {
       .eq("id", id);
 
     if (error) {
-      alert(`Error detallado de Supabase: ${error.message}\nCódigo: ${error.code}`);
+      // Si la columna 'password' no existe aún en la tabla de Supabase (PGRST204)
+      if (error.code === "PGRST204" || error.message.includes("password")) {
+        delete payload.password;
+        const { error: fallbackError } = await supabase
+          .from("perfiles")
+          .update(payload)
+          .eq("id", id);
+
+        if (fallbackError) {
+          alert(`Error al actualizar perfil: ${fallbackError.message}`);
+        } else {
+          alert(
+            "⚠️ Se actualizaron los datos (Nombre, Cédula y Rol).\n\nPara guardar y ver la clave en la tabla, ejecuta esta instrucción en el SQL Editor de tu Supabase:\n\nALTER TABLE perfiles ADD COLUMN password text;"
+          );
+          setEditandoUser(null);
+          obtenerUsuarios();
+        }
+      } else {
+        alert(`Error al actualizar: ${error.message}`);
+      }
     } else {
       alert("🎉 ¡Datos y clave actualizados con éxito!");
       setEditandoUser(null);
