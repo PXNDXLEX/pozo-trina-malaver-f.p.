@@ -1,27 +1,45 @@
 import React, { useState, useEffect } from "react";
 import { supabase } from "../supabase/supabase.config";
-
+import styled from "styled-components";
+import {
+  MdPeople,
+  MdEdit,
+  MdDelete,
+  MdSave,
+  MdClose,
+  MdVisibility,
+  MdVisibilityOff,
+  MdKey,
+  MdBadge,
+  MdPerson,
+  MdSecurity
+} from "react-icons/md";
 
 export function TablaUsuario() {
   const [usuarios, setUsuarios] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [showModal, setShowModal] = useState(false);
-  
-  // Estados nuevos para la edición
+
+  // Edit State
   const [editandoUser, setEditandoUser] = useState(null);
-  const [nombreEdit, setNombreEdit] = useState('');
-  const [cedulaEdit, setCedulaEdit] = useState('');
-  const [rolEdit, setRolEdit] = useState('vendedor');
+  const [nombreEdit, setNombreEdit] = useState("");
+  const [cedulaEdit, setCedulaEdit] = useState("");
+  const [rolEdit, setRolEdit] = useState("registrador");
+  const [passwordEdit, setPasswordEdit] = useState("");
+
+  // Password Visibility state per user
+  const [visibilidadClaves, setVisibilidadClaves] = useState({});
 
   const obtenerUsuarios = async () => {
     setLoading(true);
     const { data, error } = await supabase
-      .from('perfiles')
-      .select('*')
-      .order('nombre', { ascending: true });
+      .from("perfiles")
+      .select("*")
+      .order("nombre", { ascending: true });
 
     if (!error && data) {
       setUsuarios(data);
+    } else if (error) {
+      console.error("Error al obtener usuarios:", error.message);
     }
     setLoading(false);
   };
@@ -30,155 +48,679 @@ export function TablaUsuario() {
     obtenerUsuarios();
   }, []);
 
-  // 1. FUNCIÓN PARA ELIMINAR (Solo de la tabla perfiles)
+  const toggleMostrarClave = (id) => {
+    setVisibilidadClaves((prev) => ({
+      ...prev,
+      [id]: !prev[id],
+    }));
+  };
+
   const handleEliminar = async (id, nombre) => {
     const confirmar = window.confirm(`¿Estás seguro de que deseas eliminar a ${nombre}?`);
     if (!confirmar) return;
 
-    const { error } = await supabase
-      .from('perfiles')
-      .delete()
-      .eq('id', id);
+    const { error } = await supabase.from("perfiles").delete().eq("id", id);
 
     if (error) {
       alert(`Error al eliminar: ${error.message}`);
     } else {
-      alert('Usuario eliminado de la base de datos.');
-      obtenerUsuarios(); // Recargar tabla
+      alert("Usuario eliminado de la base de datos.");
+      obtenerUsuarios();
     }
   };
 
-  // 2. FUNCIÓN PARA ENTRAR EN MODO EDICIÓN
   const activarEdicion = (usr) => {
     setEditandoUser(usr.id);
-    setNombreEdit(usr.nombre);
-    setCedulaEdit(usr.cedula);
-    setRolEdit(usr.rol);
+    setNombreEdit(usr.nombre || "");
+    setCedulaEdit(usr.cedula || "");
+    setRolEdit(usr.rol || "registrador");
+    setPasswordEdit(usr.password || "");
   };
 
- const handleGuardarEdicion = async (id) => {
-  // Asegúrate de que los valores coincidan exactamente con lo que espera tu base de datos
-  const { error } = await supabase
-    .from('perfiles')
-    .update({
+  const handleGuardarEdicion = async (id) => {
+    const payload = {
       nombre: nombreEdit,
       cedula: cedulaEdit,
-      rol: rolEdit // Revisa que el <select> envíe el formato correcto (ej: "CAMIONERO")
-    })
-    .eq('id', id);
+      rol: rolEdit,
+    };
 
-  if (error) {
-    // Esto te dirá exactamente qué columna está rechazando Supabase
-    alert(`Error detallado de Supabase: ${error.message}\nCódigo: ${error.code}`);
-  } else {
-    alert('🎉 ¡Datos actualizados con éxito!');
-    setEditandoUser(null); // Sale del modo edición
-    obtenerUsuarios(); // Recarga la tabla con los datos nuevos
-  }
-};
+    if (passwordEdit.trim() !== "") {
+      payload.password = passwordEdit.trim();
+    }
+
+    const { error } = await supabase
+      .from("perfiles")
+      .update(payload)
+      .eq("id", id);
+
+    if (error) {
+      alert(`Error detallado de Supabase: ${error.message}\nCódigo: ${error.code}`);
+    } else {
+      alert("🎉 ¡Datos y clave actualizados con éxito!");
+      setEditandoUser(null);
+      obtenerUsuarios();
+    }
+  };
 
   return (
-    <div style={{ padding: '20px', color: '#fff', backgroundColor: '#1e1e1e', minHeight: '100vh', fontFamily: 'sans-serif' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-        <h2>👥 Gestión de Personal / Usuarios</h2>
-      </div>
+    <Container>
+      <HeaderSection>
+        <TitleGroup>
+          <IconBadge>
+            <MdPeople />
+          </IconBadge>
+          <div>
+            <h2>Gestión de Personal / Usuarios</h2>
+            <p className="subtitle">Consulta, visualiza contraseñas y administra roles de usuarios</p>
+          </div>
+        </TitleGroup>
+      </HeaderSection>
 
       {loading ? (
-        <p>Cargando personal...</p>
+        <LoadingState>Cargando lista de usuarios...</LoadingState>
       ) : (
-        <table style={{ width: '100%', borderCollapse: 'collapse', backgroundColor: '#2d2d2d', borderRadius: '8px', overflow: 'hidden' }}>
-          <thead>
-            <tr style={{ backgroundColor: '#3d3d3d', textAlign: 'left' }}>
-              <th style={{ padding: '12px' }}>Nombre</th>
-              <th style={{ padding: '12px' }}>Cédula</th>
-              <th style={{ padding: '12px' }}>Rol asignado</th>
-              <th style={{ padding: '12px', textAlign: 'center' }}>Acciones</th>
-            </tr>
-          </thead>
-          <tbody>
-            {usuarios.map((usr) => (
-              <tr key={usr.id} style={{ borderBottom: '1px solid #3d3d3d' }}>
-                
-                {/* CELDA NOMBRE (Normal o Modo Edición) */}
-                <td style={{ padding: '12px' }}>
-                  {editandoUser === usr.id ? (
-                    <input type="text" value={nombreEdit} onChange={e => setNombreEdit(e.target.value)} style={inputInlineStyle} />
-                  ) : (
-                    usr.nombre
-                  )}
-                </td>
+        <>
+          {/* 🖥️ VISTA TABLA (DESKTOP) */}
+          <TableWrapper>
+            <StyledTable>
+              <thead>
+                <tr>
+                  <th><MdPerson className="th-icon" /> Nombre</th>
+                  <th><MdBadge className="th-icon" /> Cédula</th>
+                  <th><MdSecurity className="th-icon" /> Rol Asignado</th>
+                  <th><MdKey className="th-icon" /> Clave / Contraseña</th>
+                  <th style={{ textAlign: "center" }}>Acciones</th>
+                </tr>
+              </thead>
+              <tbody>
+                {usuarios.map((usr) => {
+                  const esModoEdicion = editandoUser === usr.id;
+                  const claveVisible = visibilidadClaves[usr.id];
 
-                {/* CELDA CÉDULA (Normal o Modo Edición) */}
-                <td style={{ padding: '12px' }}>
-                  {editandoUser === usr.id ? (
-                    <input type="text" value={cedulaEdit} onChange={e => setCedulaEdit(e.target.value)} style={inputInlineStyle} />
-                  ) : (
-                    usr.cedula
-                  )}
-                </td>
+                  return (
+                    <tr key={usr.id}>
+                      {/* NOMBRE */}
+                      <td>
+                        {esModoEdicion ? (
+                          <InputInline
+                            type="text"
+                            value={nombreEdit}
+                            onChange={(e) => setNombreEdit(e.target.value)}
+                            placeholder="Nombre del usuario"
+                          />
+                        ) : (
+                          <span className="user-name">{usr.nombre}</span>
+                        )}
+                      </td>
 
-                {/* CELDA ROL (Normal o Modo Edición) */}
-                <td style={{ padding: '12px' }}>
-                  {editandoUser === usr.id ? (
-                    <select value={rolEdit} onChange={e => setRolEdit(e.target.value)} style={inputInlineStyle}>
-                      <option value="registrador">Vendedor / Recargador</option>
-                      <option value="camionero">Chofer de Cisterna</option>
-                      <option value="administrador">Administrador del Pozo</option>
-                    </select>
-                  ) : (
-                    <span style={{ 
-                      padding: '4px 8px', borderRadius: '4px', fontSize: '12px', fontWeight: 'bold',
-                      backgroundColor: usr.rol === 'admin' || usr.rol === 'administrador' ? '#d32f2f' : usr.rol === 'chofer' || usr.rol === 'camionero' ? '#f57c00' : '#388e3c'
-                    }}>
-                      {usr.rol ? usr.rol.toUpperCase() : 'SIN ROL'}
-                    </span>
-                  )}
-                </td>
+                      {/* CÉDULA */}
+                      <td>
+                        {esModoEdicion ? (
+                          <InputInline
+                            type="text"
+                            value={cedulaEdit}
+                            onChange={(e) => setCedulaEdit(e.target.value)}
+                            placeholder="Cédula"
+                          />
+                        ) : (
+                          <span className="cedula-tag">{usr.cedula}</span>
+                        )}
+                      </td>
 
-                {/* COLUMNA DE ACCIONES DINÁMICAS */}
-                <td style={{ padding: '12px', textAlign: 'center' }}>
-                  {editandoUser === usr.id ? (
-                    <div style={{ display: 'flex', gap: '8px', justifyContent: 'center' }}>
-                      <button onClick={() => handleGuardarEdicion(usr.id)} style={{ ...btnAccionStyle, backgroundColor: '#388e3c' }}>💾 Guardar</button>
-                      <button onClick={() => setEditandoUser(null)} style={{ ...btnAccionStyle, backgroundColor: '#757575' }}>❌ Cancelar</button>
-                    </div>
-                  ) : (
-                    <div style={{ display: 'flex', gap: '8px', justifyContent: 'center' }}>
-                      <button onClick={() => activarEdicion(usr)} style={{ ...btnAccionStyle, backgroundColor: '#1976d2' }}>✏️ Editar</button>
-                      <button onClick={() => handleEliminar(usr.id, usr.nombre)} style={{ ...btnAccionStyle, backgroundColor: '#d32f2f' }}>🗑️ Eliminar</button>
-                    </div>
-                  )}
-                </td>
+                      {/* ROL */}
+                      <td>
+                        {esModoEdicion ? (
+                          <SelectInline
+                            value={rolEdit}
+                            onChange={(e) => setRolEdit(e.target.value)}
+                          >
+                            <option value="registrador">Vendedor / Recargador</option>
+                            <option value="camionero">Chofer de Cisterna</option>
+                            <option value="administrador">Administrador del Pozo</option>
+                          </SelectInline>
+                        ) : (
+                          <RoleBadge className={usr.rol}>
+                            {usr.rol ? usr.rol.toUpperCase() : "SIN ROL"}
+                          </RoleBadge>
+                        )}
+                      </td>
 
-              </tr>
-            ))}
-          </tbody>
-        </table>
+                      {/* CLAVE / CONTRASEÑA */}
+                      <td>
+                        {esModoEdicion ? (
+                          <InputInline
+                            type="text"
+                            value={passwordEdit}
+                            onChange={(e) => setPasswordEdit(e.target.value)}
+                            placeholder="Nueva clave"
+                          />
+                        ) : (
+                          <PasswordBox>
+                            <span className="password-text">
+                              {claveVisible ? usr.password || "No registrada" : "••••••••"}
+                            </span>
+                            <EyeButton
+                              type="button"
+                              onClick={() => toggleMostrarClave(usr.id)}
+                              title={claveVisible ? "Ocultar clave" : "Ver clave"}
+                            >
+                              {claveVisible ? <MdVisibilityOff /> : <MdVisibility />}
+                            </EyeButton>
+                          </PasswordBox>
+                        )}
+                      </td>
+
+                      {/* ACCIONES */}
+                      <td>
+                        <ActionCell>
+                          {esModoEdicion ? (
+                            <>
+                              <BtnSave onClick={() => handleGuardarEdicion(usr.id)}>
+                                <MdSave /> Guardar
+                              </BtnSave>
+                              <BtnCancel onClick={() => setEditandoUser(null)}>
+                                <MdClose /> Cancelar
+                              </BtnCancel>
+                            </>
+                          ) : (
+                            <>
+                              <BtnEdit onClick={() => activarEdicion(usr)}>
+                                <MdEdit /> Editar
+                              </BtnEdit>
+                              <BtnDelete onClick={() => handleEliminar(usr.id, usr.nombre)}>
+                                <MdDelete /> Eliminar
+                              </BtnDelete>
+                            </>
+                          )}
+                        </ActionCell>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </StyledTable>
+          </TableWrapper>
+
+          {/* 📱 VISTA TARJETAS (MOBILE <= 768px) */}
+          <CardsWrapper>
+            {usuarios.map((usr) => {
+              const esModoEdicion = editandoUser === usr.id;
+              const claveVisible = visibilidadClaves[usr.id];
+
+              return (
+                <UserCard key={usr.id}>
+                  {esModoEdicion ? (
+                    <CardForm>
+                      <label>Nombre:</label>
+                      <InputInline
+                        type="text"
+                        value={nombreEdit}
+                        onChange={(e) => setNombreEdit(e.target.value)}
+                      />
+
+                      <label>Cédula:</label>
+                      <InputInline
+                        type="text"
+                        value={cedulaEdit}
+                        onChange={(e) => setCedulaEdit(e.target.value)}
+                      />
+
+                      <label>Rol:</label>
+                      <SelectInline
+                        value={rolEdit}
+                        onChange={(e) => setRolEdit(e.target.value)}
+                      >
+                        <option value="registrador">Vendedor / Recargador</option>
+                        <option value="camionero">Chofer de Cisterna</option>
+                        <option value="administrador">Administrador del Pozo</option>
+                      </SelectInline>
+
+                      <label>Clave / Contraseña:</label>
+                      <InputInline
+                        type="text"
+                        value={passwordEdit}
+                        onChange={(e) => setPasswordEdit(e.target.value)}
+                        placeholder="Nueva clave"
+                      />
+
+                      <CardActions>
+                        <BtnSave onClick={() => handleGuardarEdicion(usr.id)}>
+                          <MdSave /> Guardar
+                        </BtnSave>
+                        <BtnCancel onClick={() => setEditandoUser(null)}>
+                          <MdClose /> Cancelar
+                        </BtnCancel>
+                      </CardActions>
+                    </CardForm>
+                  ) : (
+                    <>
+                      <CardHeader>
+                        <div>
+                          <span className="user-name">{usr.nombre}</span>
+                          <span className="cedula-tag">C.I. {usr.cedula}</span>
+                        </div>
+                        <RoleBadge className={usr.rol}>
+                          {usr.rol ? usr.rol.toUpperCase() : "SIN ROL"}
+                        </RoleBadge>
+                      </CardHeader>
+
+                      <CardRow>
+                        <span className="label"><MdKey /> Clave:</span>
+                        <PasswordBox>
+                          <span className="password-text">
+                            {claveVisible ? usr.password || "No registrada" : "••••••••"}
+                          </span>
+                          <EyeButton
+                            type="button"
+                            onClick={() => toggleMostrarClave(usr.id)}
+                          >
+                            {claveVisible ? <MdVisibilityOff /> : <MdVisibility />}
+                          </EyeButton>
+                        </PasswordBox>
+                      </CardRow>
+
+                      <CardActions>
+                        <BtnEdit onClick={() => activarEdicion(usr)}>
+                          <MdEdit /> Editar
+                        </BtnEdit>
+                        <BtnDelete onClick={() => handleEliminar(usr.id, usr.nombre)}>
+                          <MdDelete /> Eliminar
+                        </BtnDelete>
+                      </CardActions>
+                    </>
+                  )}
+                </UserCard>
+              );
+            })}
+          </CardsWrapper>
+        </>
       )}
-
-     
-    </div>
+    </Container>
   );
 }
 
-// Estilos rápidos en línea para los botones y campos editables
-const inputInlineStyle = {
-  padding: '6px',
-  backgroundColor: '#1e1e1e',
-  color: '#fff',
-  border: '1px solid #555',
-  borderRadius: '4px',
-  width: '90%'
-};
+// 🎨 STYLED COMPONENTS MODERN GLASSMORPHISM FOR USERS TABLE
+const Container = styled.div`
+  animation: fadeIn 0.3s ease-out;
+`;
 
-const btnAccionStyle = {
-  padding: '6px 12px',
-  color: '#fff',
-  border: 'none',
-  borderRadius: '4px',
-  cursor: 'pointer',
-  fontWeight: 'bold',
-  fontSize: '13px'
-};
+const HeaderSection = styled.div`
+  margin-bottom: 24px;
+`;
 
+const TitleGroup = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 16px;
 
+  h2 {
+    font-size: 22px;
+    font-weight: 700;
+    color: #ffffff;
+    margin: 0 0 4px 0;
+  }
+
+  .subtitle {
+    color: #94a3b8;
+    font-size: 13px;
+    margin: 0;
+  }
+`;
+
+const IconBadge = styled.div`
+  width: 48px;
+  height: 48px;
+  border-radius: 14px;
+  background: linear-gradient(135deg, rgba(0, 195, 255, 0.2), rgba(0, 114, 255, 0.2));
+  border: 1px solid rgba(0, 195, 255, 0.3);
+  color: #00c3ff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+`;
+
+const LoadingState = styled.div`
+  padding: 50px;
+  text-align: center;
+  color: #94a3b8;
+  background: rgba(21, 28, 45, 0.5);
+  border-radius: 16px;
+  border: 1px dashed rgba(255, 255, 255, 0.1);
+`;
+
+const TableWrapper = styled.div`
+  background: rgba(21, 28, 45, 0.7);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+
+  @media (max-width: 768px) {
+    display: none;
+  }
+`;
+
+const StyledTable = styled.table`
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+
+  thead {
+    background: rgba(15, 23, 42, 0.8);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+
+    th {
+      padding: 16px 20px;
+      font-size: 13px;
+      font-weight: 600;
+      color: #94a3b8;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+
+      .th-icon {
+        vertical-align: middle;
+        margin-right: 6px;
+        font-size: 16px;
+        color: #00c3ff;
+      }
+    }
+  }
+
+  tbody {
+    tr {
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+      transition: background 0.15s ease;
+
+      &:hover {
+        background: rgba(255, 255, 255, 0.03);
+      }
+
+      &:last-child {
+        border-bottom: none;
+      }
+    }
+
+    td {
+      padding: 16px 20px;
+      font-size: 14px;
+      color: #f8fafc;
+      vertical-align: middle;
+    }
+  }
+
+  .user-name {
+    font-weight: 600;
+    color: #ffffff;
+  }
+
+  .cedula-tag {
+    color: #cbd5e1;
+    font-family: monospace;
+    font-size: 13px;
+  }
+`;
+
+const RoleBadge = styled.span`
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: 8px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+
+  &.administrador, &.admin {
+    background: rgba(239, 68, 68, 0.15);
+    color: #ef4444;
+    border: 1px solid rgba(239, 68, 68, 0.3);
+  }
+
+  &.camionero, &.chofer {
+    background: rgba(245, 158, 11, 0.15);
+    color: #f59e0b;
+    border: 1px solid rgba(245, 158, 11, 0.3);
+  }
+
+  &.registrador, &.vendedor {
+    background: rgba(16, 185, 129, 0.15);
+    color: #10b981;
+    border: 1px solid rgba(16, 185, 129, 0.3);
+  }
+`;
+
+const PasswordBox = styled.div`
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(15, 23, 42, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 6px 10px;
+  border-radius: 8px;
+
+  .password-text {
+    font-family: monospace;
+    font-size: 13px;
+    color: #00c3ff;
+    letter-spacing: 1px;
+    min-width: 80px;
+  }
+`;
+
+const EyeButton = styled.button`
+  background: none;
+  border: none;
+  color: #94a3b8;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  transition: color 0.15s;
+
+  &:hover {
+    color: #ffffff;
+  }
+`;
+
+const ActionCell = styled.div`
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+`;
+
+const BtnEdit = styled.button`
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  background: rgba(0, 195, 255, 0.15);
+  color: #00c3ff;
+  border: 1px solid rgba(0, 195, 255, 0.3);
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+
+  &:hover {
+    background: #00c3ff;
+    color: #0b0f19;
+    box-shadow: 0 0 12px rgba(0, 195, 255, 0.4);
+  }
+`;
+
+const BtnDelete = styled.button`
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  background: rgba(239, 68, 68, 0.15);
+  color: #ef4444;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+
+  &:hover {
+    background: #ef4444;
+    color: #ffffff;
+    box-shadow: 0 0 12px rgba(239, 68, 68, 0.4);
+  }
+`;
+
+const BtnSave = styled.button`
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  background: rgba(16, 185, 129, 0.2);
+  color: #10b981;
+  border: 1px solid rgba(16, 185, 129, 0.4);
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+
+  &:hover {
+    background: #10b981;
+    color: #0b0f19;
+  }
+`;
+
+const BtnCancel = styled.button`
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  background: rgba(148, 163, 184, 0.15);
+  color: #94a3b8;
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+
+  &:hover {
+    background: #94a3b8;
+    color: #0b0f19;
+  }
+`;
+
+const InputInline = styled.input`
+  width: 100%;
+  padding: 8px 12px;
+  background: rgba(15, 23, 42, 0.8);
+  border: 1px solid rgba(0, 195, 255, 0.4);
+  border-radius: 8px;
+  color: #ffffff;
+  font-size: 13px;
+  outline: none;
+  box-sizing: border-box;
+
+  &:focus {
+    border-color: #00c3ff;
+    box-shadow: 0 0 8px rgba(0, 195, 255, 0.3);
+  }
+`;
+
+const SelectInline = styled.select`
+  width: 100%;
+  padding: 8px 12px;
+  background: #151c2c;
+  border: 1px solid rgba(0, 195, 255, 0.4);
+  border-radius: 8px;
+  color: #ffffff;
+  font-size: 13px;
+  outline: none;
+  cursor: pointer;
+`;
+
+/* 📱 MOBILE CARDS VIEW */
+const CardsWrapper = styled.div`
+  display: none;
+  flex-direction: column;
+  gap: 14px;
+
+  @media (max-width: 768px) {
+    display: flex;
+  }
+`;
+
+const UserCard = styled.div`
+  background: rgba(21, 28, 45, 0.75);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 16px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+`;
+
+const CardHeader = styled.div`
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+
+  .user-name {
+    display: block;
+    font-size: 16px;
+    font-weight: 700;
+    color: #ffffff;
+  }
+
+  .cedula-tag {
+    display: block;
+    font-size: 12px;
+    color: #94a3b8;
+    font-family: monospace;
+    margin-top: 2px;
+  }
+`;
+
+const CardRow = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-top: 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+
+  .label {
+    font-size: 13px;
+    color: #94a3b8;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+
+    svg {
+      color: #00c3ff;
+    }
+  }
+`;
+
+const CardActions = styled.div`
+  display: flex;
+  gap: 10px;
+  margin-top: 6px;
+
+  button {
+    flex: 1;
+    justify-content: center;
+  }
+`;
+
+const CardForm = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+
+  label {
+    font-size: 12px;
+    color: #94a3b8;
+    font-weight: 500;
+  }
+`;

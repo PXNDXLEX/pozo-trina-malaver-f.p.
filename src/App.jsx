@@ -1,41 +1,34 @@
-import styled, {ThemeProvider} from "styled-components";
+import styled, { ThemeProvider } from "styled-components";
 import { GlobalStyles } from "./styles/GlobalStyles";
 import { MyRoutes, useThemeStore } from "./index";
-import {Device} from "./styles/sizes"
-import { useState } from "react";
+
 function App() {
- 
-  const {themeStyle} = useThemeStore();
+  const { themeStyle } = useThemeStore();
   return (
     <ThemeProvider theme={themeStyle}>
-    <Container >
-      <GlobalStyles />
-      <section className="contentRouters"><MyRoutes/></section>
-    </Container>
+      <Container>
+        <GlobalStyles />
+        <section className="contentRouters">
+          <MyRoutes />
+        </section>
+      </Container>
     </ThemeProvider>
   );
 }
-const Container = styled.main`
-  display:grid;
-  grid-template-columns: min-content 1fr;
-  transition: all 0.3s;
-  background-color:${({theme})=>theme.bgtotal};
 
-  
-  
-  @media ${Device.tablet} {
-    grid-template-colums:0px 1fr;
-    &.active{
-      grid-template-columns: 260px 1fr;
-    }
-  
-   .contentRouters{
-    
-    grid-column: 2;
-    width: 100%
-    
-    
+const Container = styled.main`
+  width: 100%;
+  min-height: 100vh;
+  background-color: #0b0f19;
+  display: flex;
+  flex-direction: column;
+
+  .contentRouters {
+    width: 100%;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
   }
-  }
-`
-export default App
+`;
+
+export default App;
