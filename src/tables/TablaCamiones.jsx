@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { supabase } from "../supabase/supabase.config";
+import { FormularioCamiones } from "../forms/FormularioCamiones";
 import styled from "styled-components";
 import {
   MdLocalShipping,
@@ -9,12 +10,16 @@ import {
   MdEdit,
   MdDelete,
   MdSave,
-  MdClose
+  MdClose,
+  MdAddCircleOutline
 } from "react-icons/md";
 
 export function TablaCamiones() {
   const [datos, setDatos] = useState([]);
   const [loading, setLoading] = useState(true);
+
+  // Estado para Modal Crear Nuevo Camión
+  const [showCrearModal, setShowCrearModal] = useState(false);
 
   const [editandoCamion, setEditandoCamion] = useState(null);
   const [placaEdit, setPlacaEdit] = useState("");
@@ -90,6 +95,10 @@ export function TablaCamiones() {
             <p className="subtitle">Consulta, edita y gestiona las unidades de transporte registradas</p>
           </div>
         </TitleGroup>
+
+        <BtnCrearCamion onClick={() => setShowCrearModal(true)}>
+          <MdAddCircleOutline /> Registrar Nuevo Camión
+        </BtnCrearCamion>
       </HeaderSection>
 
       {loading ? (
@@ -251,6 +260,23 @@ export function TablaCamiones() {
           </CardsWrapper>
         </>
       )}
+
+      {/* ➕ MODAL CREAR NUEVO CAMIÓN */}
+      {showCrearModal && (
+        <ModalOverlay onClick={() => setShowCrearModal(false)}>
+          <ModalContentForm onClick={(e) => e.stopPropagation()}>
+            <ModalCloseBtn onClick={() => setShowCrearModal(false)} title="Cerrar">
+              <MdClose />
+            </ModalCloseBtn>
+            <FormularioCamiones
+              onCamionAgregado={() => {
+                setShowCrearModal(false);
+                consultar();
+              }}
+            />
+          </ModalContentForm>
+        </ModalOverlay>
+      )}
     </Container>
   );
 }
@@ -261,7 +287,37 @@ const Container = styled.div`
 `;
 
 const HeaderSection = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
   margin-bottom: 24px;
+  flex-wrap: wrap;
+`;
+
+const BtnCrearCamion = styled.button`
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 20px;
+  background: linear-gradient(135deg, #00c3ff 0%, #0072ff 100%);
+  color: #ffffff;
+  border: none;
+  border-radius: 12px;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 4px 15px rgba(0, 195, 255, 0.3);
+
+  svg {
+    font-size: 18px;
+  }
+
+  &:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 25px rgba(0, 195, 255, 0.45);
+  }
 `;
 
 const TitleGroup = styled.div`
@@ -570,3 +626,55 @@ const CardForm = styled.div`
     font-weight: 500;
   }
 `;
+
+const ModalOverlay = styled.div`
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.75);
+  backdrop-filter: blur(6px);
+  z-index: 1200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  animation: fadeIn 0.2s ease-out;
+`;
+
+const ModalContentForm = styled.div`
+  position: relative;
+  background: #151c2c;
+  border: 1px solid rgba(0, 195, 255, 0.3);
+  border-radius: 20px;
+  width: 100%;
+  max-width: 650px;
+  max-height: 90vh;
+  overflow-y: auto;
+  padding: 24px;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6);
+  animation: fadeIn 0.25s ease-out;
+`;
+
+const ModalCloseBtn = styled.button`
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  background: rgba(255, 255, 255, 0.08);
+  border: none;
+  color: #94a3b8;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  z-index: 10;
+
+  &:hover {
+    background: rgba(239, 68, 68, 0.2);
+    color: #ef4444;
+  }
+`;
+
