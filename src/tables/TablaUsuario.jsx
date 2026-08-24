@@ -9,8 +9,7 @@ import {
   MdClose,
   MdBadge,
   MdPerson,
-  MdSecurity,
-  MdVpnKey
+  MdSecurity
 } from "react-icons/md";
 
 export function TablaUsuario() {
@@ -22,7 +21,6 @@ export function TablaUsuario() {
   const [nombreEdit, setNombreEdit] = useState("");
   const [cedulaEdit, setCedulaEdit] = useState("");
   const [rolEdit, setRolEdit] = useState("registrador");
-  const [passwordEdit, setPasswordEdit] = useState("");
 
   const obtenerUsuarios = async () => {
     setLoading(true);
@@ -62,19 +60,14 @@ export function TablaUsuario() {
     setNombreEdit(usr.nombre || "");
     setCedulaEdit(usr.cedula || "");
     setRolEdit(usr.rol || "registrador");
-    setPasswordEdit("");
   };
 
   const handleGuardarEdicion = async (id) => {
     const payload = {
-      nombre: nombreEdit,
-      cedula: cedulaEdit,
+      nombre: nombreEdit.trim(),
+      cedula: cedulaEdit.trim(),
       rol: rolEdit,
     };
-
-    if (passwordEdit.trim() !== "") {
-      payload.password = passwordEdit.trim();
-    }
 
     const { error } = await supabase
       .from("perfiles")
@@ -82,23 +75,7 @@ export function TablaUsuario() {
       .eq("id", id);
 
     if (error) {
-      if (error.code === "PGRST204" || error.message.includes("password")) {
-        delete payload.password;
-        const { error: fallbackError } = await supabase
-          .from("perfiles")
-          .update(payload)
-          .eq("id", id);
-
-        if (fallbackError) {
-          alert(`Error al actualizar perfil: ${fallbackError.message}`);
-        } else {
-          alert("🎉 ¡Nombre, Cédula y Rol actualizados con éxito!");
-          setEditandoUser(null);
-          obtenerUsuarios();
-        }
-      } else {
-        alert(`Error al actualizar: ${error.message}`);
-      }
+      alert(`Error al actualizar usuario: ${error.message}`);
     } else {
       alert("🎉 ¡Datos de usuario actualizados con éxito!");
       setEditandoUser(null);
@@ -115,7 +92,7 @@ export function TablaUsuario() {
           </IconBadge>
           <div>
             <h2>Gestión de Personal / Usuarios</h2>
-            <p className="subtitle">Consulta roles, edita datos y cambia contraseñas de acceso</p>
+            <p className="subtitle">Consulta, edita datos y administra los roles de los usuarios</p>
           </div>
         </TitleGroup>
       </HeaderSection>
@@ -192,13 +169,6 @@ export function TablaUsuario() {
                         <ActionCell>
                           {esModoEdicion ? (
                             <EditBoxInline>
-                              <InputInline
-                                type="password"
-                                value={passwordEdit}
-                                onChange={(e) => setPasswordEdit(e.target.value)}
-                                placeholder="Nueva clave (opcional)..."
-                                style={{ minWidth: "150px" }}
-                              />
                               <BtnSave onClick={() => handleGuardarEdicion(usr.id)}>
                                 <MdSave /> Guardar
                               </BtnSave>
@@ -209,7 +179,7 @@ export function TablaUsuario() {
                           ) : (
                             <>
                               <BtnEdit onClick={() => activarEdicion(usr)}>
-                                <MdEdit /> Editar / Cambiar Clave
+                                <MdEdit /> Editar
                               </BtnEdit>
                               <BtnDelete onClick={() => handleEliminar(usr.id, usr.nombre)}>
                                 <MdDelete /> Eliminar
@@ -258,14 +228,6 @@ export function TablaUsuario() {
                         <option value="administrador">Administrador del Pozo</option>
                       </SelectInline>
 
-                      <label><MdVpnKey /> Cambiar Clave (opcional):</label>
-                      <InputInline
-                        type="password"
-                        value={passwordEdit}
-                        onChange={(e) => setPasswordEdit(e.target.value)}
-                        placeholder="Escribe la nueva clave..."
-                      />
-
                       <CardActions>
                         <BtnSave onClick={() => handleGuardarEdicion(usr.id)}>
                           <MdSave /> Guardar
@@ -289,7 +251,7 @@ export function TablaUsuario() {
 
                       <CardActions>
                         <BtnEdit onClick={() => activarEdicion(usr)}>
-                          <MdEdit /> Editar / Clave
+                          <MdEdit /> Editar
                         </BtnEdit>
                         <BtnDelete onClick={() => handleEliminar(usr.id, usr.nombre)}>
                           <MdDelete /> Eliminar
@@ -642,8 +604,5 @@ const CardForm = styled.div`
     font-size: 12px;
     color: #94a3b8;
     font-weight: 500;
-    display: flex;
-    align-items: center;
-    gap: 4px;
   }
 `;
