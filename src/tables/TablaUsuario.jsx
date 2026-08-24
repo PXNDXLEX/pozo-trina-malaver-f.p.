@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from "react";
 import { supabase } from "../supabase/supabase.config";
-import { FormularioUsuario } from "../forms/FormularioUsuario";
 import styled from "styled-components";
 import {
   MdPeople,
@@ -12,16 +11,12 @@ import {
   MdPerson,
   MdSecurity,
   MdVpnKey,
-  MdLock,
-  MdPersonAdd
+  MdLock
 } from "react-icons/md";
 
 export function TablaUsuario() {
   const [usuarios, setUsuarios] = useState([]);
   const [loading, setLoading] = useState(true);
-
-  // Estado para Modal de Crear Nuevo Usuario
-  const [showCrearModal, setShowCrearModal] = useState(false);
 
   // Estados para Edición de perfil (Nombre, Cédula, Rol)
   const [editandoUser, setEditandoUser] = useState(null);
@@ -138,13 +133,9 @@ export function TablaUsuario() {
           </IconBadge>
           <div>
             <h2>Gestión de Personal / Usuarios</h2>
-            <p className="subtitle">Consulta, edita perfiles, registra nuevos usuarios y cambia contraseñas</p>
+            <p className="subtitle">Consulta, edita perfiles y cambia contraseñas de acceso</p>
           </div>
         </TitleGroup>
-
-        <BtnCrearUsuario onClick={() => setShowCrearModal(true)}>
-          <MdPersonAdd /> Registrar Nuevo Usuario
-        </BtnCrearUsuario>
       </HeaderSection>
 
       {loading ? (
@@ -354,23 +345,6 @@ export function TablaUsuario() {
           </ModalContent>
         </ModalOverlay>
       )}
-
-      {/* ➕ MODAL CREAR NUEVO USUARIO */}
-      {showCrearModal && (
-        <ModalOverlay onClick={() => setShowCrearModal(false)}>
-          <ModalContentForm onClick={(e) => e.stopPropagation()}>
-            <ModalCloseBtn onClick={() => setShowCrearModal(false)} title="Cerrar">
-              <MdClose />
-            </ModalCloseBtn>
-            <FormularioUsuario
-              onUsuarioRegistrado={() => {
-                setShowCrearModal(false);
-                obtenerUsuarios();
-              }}
-            />
-          </ModalContentForm>
-        </ModalOverlay>
-      )}
     </Container>
   );
 }
@@ -381,37 +355,7 @@ const Container = styled.div`
 `;
 
 const HeaderSection = styled.div`
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
   margin-bottom: 24px;
-  flex-wrap: wrap;
-`;
-
-const BtnCrearUsuario = styled.button`
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 12px 20px;
-  background: linear-gradient(135deg, #00c3ff 0%, #0072ff 100%);
-  color: #ffffff;
-  border: none;
-  border-radius: 12px;
-  font-size: 14px;
-  font-weight: 700;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  box-shadow: 0 4px 15px rgba(0, 195, 255, 0.3);
-
-  svg {
-    font-size: 18px;
-  }
-
-  &:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 8px 25px rgba(0, 195, 255, 0.45);
-  }
 `;
 
 const TitleGroup = styled.div`
@@ -881,42 +825,3 @@ const SubmitModalBtn = styled.button`
     cursor: not-allowed;
   }
 `;
-
-const ModalContentForm = styled.div`
-  position: relative;
-  background: #151c2c;
-  border: 1px solid rgba(0, 195, 255, 0.3);
-  border-radius: 20px;
-  width: 100%;
-  max-width: 650px;
-  max-height: 90vh;
-  overflow-y: auto;
-  padding: 24px;
-  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6);
-  animation: fadeIn 0.25s ease-out;
-`;
-
-const ModalCloseBtn = styled.button`
-  position: absolute;
-  top: 20px;
-  right: 20px;
-  background: rgba(255, 255, 255, 0.08);
-  border: none;
-  color: #94a3b8;
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 20px;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  z-index: 10;
-
-  &:hover {
-    background: rgba(239, 68, 68, 0.2);
-    color: #ef4444;
-  }
-`;
-
