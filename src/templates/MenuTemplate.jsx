@@ -15,7 +15,9 @@ import {
   MdFormatListBulleted,
   MdPersonAdd,
   MdManageAccounts,
-  MdClose
+  MdClose,
+  MdVpnKey,
+  MdLock
 } from "react-icons/md";
 
 export function MenuTemplate({ children }) {
@@ -25,9 +27,13 @@ export function MenuTemplate({ children }) {
 
   const [activeDropdown, setActiveDropdown] = useState(null);
   const [mobileSheet, setMobileSheet] = useState(null);
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [nuevaClave, setNuevaClave] = useState("");
+  const [confirmarClave, setConfirmarClave] = useState("");
+  const [loadingClave, setLoadingClave] = useState(false);
+
   const dropdownRef = useRef(null);
 
-  // Close desktop dropdown on outside click
   useEffect(() => {
     function handleClickOutside(event) {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
@@ -38,7 +44,6 @@ export function MenuTemplate({ children }) {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  // Close mobile sheet when location changes
   useEffect(() => {
     setMobileSheet(null);
     setActiveDropdown(null);
@@ -53,9 +58,52 @@ export function MenuTemplate({ children }) {
     navigate("/");
   };
 
+  // 🔑 Cambiar la clave del usuario actualmente logueado
+  const handleCambiarMiClave = async (e) => {
+    e.preventDefault();
+    if (nuevaClave.length < 6) {
+      alert("La nueva clave debe tener al menos 6 caracteres.");
+      return;
+    }
+    if (nuevaClave !== confirmarClave) {
+      alert("Las contraseñas no coinciden.");
+      return;
+    }
+
+    setLoadingClave(true);
+    try {
+      // Actualizar clave en Supabase Auth
+      const { error } = await supabase.auth.updateUser({
+        password: nuevaClave.trim(),
+      });
+
+      if (error) {
+        alert(`Error al cambiar contraseña: ${error.message}`);
+      } else {
+        // También intentar actualizar en la tabla perfiles si existe
+        if (user?.id) {
+          await supabase
+            .from("perfiles")
+            .update({ password: nuevaClave.trim() })
+            .eq("id", user.id);
+        }
+
+        alert("🎉 ¡Tu contraseña ha sido actualizada con éxito!");
+        setShowPasswordModal(false);
+        setNuevaClave("");
+        setConfirmarClave("");
+      }
+    } catch (err) {
+      console.error(err);
+      alert("Error al actualizar la contraseña.");
+    } finally {
+      setLoadingClave(false);
+    }
+  };
+
   return (
     <Container>
-      {/* 🖥️ DESKTOP TOP BAR (Visión PC) */}
+      {/* 🖥️ DESKTOP TOP BAR */}
       <DesktopTopBar ref={dropdownRef}>
         <BrandContainer to={user?.role === "administrador" ? "/home" : "/recarga"}>
           <LogoBadge>💧</LogoBadge>
@@ -65,14 +113,12 @@ export function MenuTemplate({ children }) {
         </BrandContainer>
 
         <NavGroup>
-          {/* Dashboard */}
           {user?.role === "administrador" && (
             <NavLink to="/home" className={location.pathname === "/home" ? "active" : ""}>
               <MdDashboard className="nav-icon" /> Dashboard
             </NavLink>
           )}
 
-          {/* Camiones Dropdown */}
           {user?.role !== "camionero" && (
             <DropdownContainer>
               <DropdownTrigger
@@ -97,7 +143,6 @@ export function MenuTemplate({ children }) {
             </DropdownContainer>
           )}
 
-          {/* Ventas / Recargas Dropdown */}
           <DropdownContainer>
             <DropdownTrigger
               onClick={() => toggleDropdown("ventas")}
@@ -120,14 +165,12 @@ export function MenuTemplate({ children }) {
             )}
           </DropdownContainer>
 
-          {/* Contabilidad */}
           {user?.role === "administrador" && (
             <NavLink to="/contabilidad" className={location.pathname === "/contabilidad" ? "active" : ""}>
               <MdAssessment className="nav-icon" /> Contabilidad
             </NavLink>
           )}
 
-          {/* Usuarios Dropdown */}
           {user?.role === "administrador" && (
             <DropdownContainer>
               <DropdownTrigger
@@ -151,19 +194,24 @@ export function MenuTemplate({ children }) {
           )}
         </NavGroup>
 
-        {/* User Pill & Logout */}
+        {/* User Pill, Change Password & Logout */}
         <UserPill>
           <UserInfo>
             <span className="user-name">{user?.name || "Usuario"}</span>
             <span className="user-role">{user?.role || "Personal"}</span>
           </UserInfo>
+
+          <IconButton onClick={() => setShowPasswordModal(true)} title="Cambiar mi contraseña">
+            <MdVpnKey />
+          </IconButton>
+
           <LogoutButton onClick={handleLogout} title="Cerrar Sesión">
             <MdLogout />
           </LogoutButton>
         </UserPill>
       </DesktopTopBar>
 
-      {/* 📱 MOBILE TOP HEADER (Visión Teléfono) */}
+      {/* 📱 MOBILE TOP HEADER */}
       <MobileTopHeader>
         <BrandContainer to="/home">
           <LogoBadge>💧</LogoBadge>
@@ -171,13 +219,18 @@ export function MenuTemplate({ children }) {
             Pozo Trina <span>Malaver</span>
           </BrandTitle>
         </BrandContainer>
-        <UserBadgeMobile>{user?.role || "Personal"}</UserBadgeMobile>
+        <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+          <IconButton onClick={() => setShowPasswordModal(true)} title="Cambiar clave">
+            <MdVpnKey />
+          </IconButton>
+          <UserBadgeMobile>{user?.role || "Personal"}</UserBadgeMobile>
+        </div>
       </MobileTopHeader>
 
       {/* MAIN CONTENT AREA */}
       <MainContent>{children}</MainContent>
 
-      {/* 📱 MOBILE BOTTOM NAVIGATION BAR (Teléfono) */}
+      {/* 📱 MOBILE BOTTOM NAVIGATION BAR */}
       <MobileBottomNav>
         {user?.role === "administrador" && (
           <NavItemMobile to="/home" className={location.pathname === "/home" ? "active" : ""}>
@@ -227,7 +280,7 @@ export function MenuTemplate({ children }) {
         </NavButtonMobile>
       </MobileBottomNav>
 
-      {/* 📱 MOBILE BOTTOM SHEET (Modal desplegable de opciones) */}
+      {/* 📱 MOBILE BOTTOM SHEET */}
       {mobileSheet && (
         <SheetOverlay onClick={() => setMobileSheet(null)}>
           <SheetContent onClick={(e) => e.stopPropagation()}>
@@ -283,11 +336,55 @@ export function MenuTemplate({ children }) {
           </SheetContent>
         </SheetOverlay>
       )}
+
+      {/* 🔑 MODAL PARA CAMBIAR LA PROPIA CONTRASEÑA */}
+      {showPasswordModal && (
+        <ModalOverlay onClick={() => setShowPasswordModal(false)}>
+          <ModalContent onClick={(e) => e.stopPropagation()}>
+            <ModalHeader>
+              <h3>🔑 Cambiar Mi Contraseña</h3>
+              <button onClick={() => setShowPasswordModal(false)}>
+                <MdClose />
+              </button>
+            </ModalHeader>
+
+            <form onSubmit={handleCambiarMiClave}>
+              <ModalBody>
+                <div className="input-group">
+                  <label><MdLock /> Nueva Contraseña:</label>
+                  <input
+                    type="password"
+                    placeholder="Mínimo 6 caracteres"
+                    value={nuevaClave}
+                    onChange={(e) => setNuevaClave(e.target.value)}
+                    required
+                  />
+                </div>
+
+                <div className="input-group">
+                  <label><MdLock /> Confirmar Nueva Contraseña:</label>
+                  <input
+                    type="password"
+                    placeholder="Repite tu nueva contraseña"
+                    value={confirmarClave}
+                    onChange={(e) => setConfirmarClave(e.target.value)}
+                    required
+                  />
+                </div>
+
+                <SubmitModalBtn type="submit" disabled={loadingClave}>
+                  {loadingClave ? "Guardando..." : "Actualizar Contraseña"}
+                </SubmitModalBtn>
+              </ModalBody>
+            </form>
+          </ModalContent>
+        </ModalOverlay>
+      )}
     </Container>
   );
 }
 
-// 🎨 STYLED COMPONENTS CON DISEÑO MODERNO GLASSMORPHISM
+// 🎨 STYLED COMPONENTS
 const Container = styled.div`
   display: flex;
   flex-direction: column;
@@ -470,10 +567,10 @@ const DropdownItem = styled(Link)`
 const UserPill = styled.div`
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
   background: rgba(255, 255, 255, 0.05);
   border: 1px solid rgba(255, 255, 255, 0.08);
-  padding: 6px 14px;
+  padding: 6px 12px;
   border-radius: 20px;
 `;
 
@@ -492,6 +589,27 @@ const UserInfo = styled.div`
     font-size: 11px;
     color: #00c3ff;
     text-transform: capitalize;
+  }
+`;
+
+const IconButton = styled.button`
+  background: rgba(0, 195, 255, 0.15);
+  color: #00c3ff;
+  border: 1px solid rgba(0, 195, 255, 0.3);
+  border-radius: 50%;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 16px;
+  transition: all 0.2s ease;
+
+  &:hover {
+    background: #00c3ff;
+    color: #0b0f19;
+    box-shadow: 0 0 10px rgba(0, 195, 255, 0.4);
   }
 `;
 
@@ -516,7 +634,7 @@ const LogoutButton = styled.button`
   }
 `;
 
-/* 📱 MOBILE SPECIFIC STYLES */
+/* 📱 MOBILE STYLES */
 const MobileTopHeader = styled.header`
   display: none;
 
@@ -636,7 +754,7 @@ const NavButtonMobile = styled.button`
   }
 `;
 
-/* Bottom Sheet Modal for Mobile Options */
+/* Bottom Sheet */
 const SheetOverlay = styled.div`
   position: fixed;
   inset: 0;
@@ -716,5 +834,123 @@ const SheetOptions = styled.div`
       background: rgba(0, 195, 255, 0.15);
       border-color: rgba(0, 195, 255, 0.4);
     }
+  }
+`;
+
+/* Modal Cambiar Contraseña */
+const ModalOverlay = styled.div`
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.75);
+  backdrop-filter: blur(6px);
+  z-index: 1200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  animation: fadeIn 0.2s ease-out;
+`;
+
+const ModalContent = styled.div`
+  background: #151c2c;
+  border: 1px solid rgba(0, 195, 255, 0.3);
+  border-radius: 20px;
+  width: 100%;
+  max-width: 400px;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6);
+  overflow: hidden;
+  animation: fadeIn 0.25s ease-out;
+`;
+
+const ModalHeader = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 24px;
+  background: rgba(15, 23, 42, 0.8);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+
+  h3 {
+    font-size: 16px;
+    font-weight: 600;
+    color: #ffffff;
+    margin: 0;
+  }
+
+  button {
+    background: none;
+    border: none;
+    color: #94a3b8;
+    font-size: 20px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+
+    &:hover {
+      color: #ffffff;
+    }
+  }
+`;
+
+const ModalBody = styled.div`
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+
+  .input-group {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+
+    label {
+      font-size: 13px;
+      color: #cbd5e1;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+
+      svg {
+        color: #00c3ff;
+      }
+    }
+
+    input {
+      padding: 12px 14px;
+      background: rgba(15, 23, 42, 0.6);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 10px;
+      color: #ffffff;
+      font-size: 14px;
+      outline: none;
+
+      &:focus {
+        border-color: #00c3ff;
+      }
+    }
+  }
+`;
+
+const SubmitModalBtn = styled.button`
+  width: 100%;
+  padding: 13px;
+  background: linear-gradient(135deg, #00c3ff 0%, #0072ff 100%);
+  color: #ffffff;
+  border: none;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  margin-top: 8px;
+  transition: all 0.2s ease;
+
+  &:hover:not(:disabled) {
+    box-shadow: 0 0 15px rgba(0, 195, 255, 0.4);
+  }
+
+  &:disabled {
+    background: #334155;
+    color: #94a3b8;
+    cursor: not-allowed;
   }
 `;

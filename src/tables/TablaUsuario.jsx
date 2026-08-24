@@ -7,13 +7,10 @@ import {
   MdDelete,
   MdSave,
   MdClose,
-  MdVisibility,
-  MdVisibilityOff,
-  MdKey,
   MdBadge,
   MdPerson,
   MdSecurity,
-  MdAddAlert
+  MdVpnKey
 } from "react-icons/md";
 
 export function TablaUsuario() {
@@ -26,9 +23,6 @@ export function TablaUsuario() {
   const [cedulaEdit, setCedulaEdit] = useState("");
   const [rolEdit, setRolEdit] = useState("registrador");
   const [passwordEdit, setPasswordEdit] = useState("");
-
-  // Password Visibility state per user
-  const [visibilidadClaves, setVisibilidadClaves] = useState({});
 
   const obtenerUsuarios = async () => {
     setLoading(true);
@@ -49,13 +43,6 @@ export function TablaUsuario() {
     obtenerUsuarios();
   }, []);
 
-  const toggleMostrarClave = (id) => {
-    setVisibilidadClaves((prev) => ({
-      ...prev,
-      [id]: !prev[id],
-    }));
-  };
-
   const handleEliminar = async (id, nombre) => {
     const confirmar = window.confirm(`¿Estás seguro de que deseas eliminar a ${nombre}?`);
     if (!confirmar) return;
@@ -75,7 +62,7 @@ export function TablaUsuario() {
     setNombreEdit(usr.nombre || "");
     setCedulaEdit(usr.cedula || "");
     setRolEdit(usr.rol || "registrador");
-    setPasswordEdit(usr.password || "");
+    setPasswordEdit("");
   };
 
   const handleGuardarEdicion = async (id) => {
@@ -95,7 +82,6 @@ export function TablaUsuario() {
       .eq("id", id);
 
     if (error) {
-      // Si la columna 'password' no existe aún en la tabla de Supabase (PGRST204)
       if (error.code === "PGRST204" || error.message.includes("password")) {
         delete payload.password;
         const { error: fallbackError } = await supabase
@@ -106,9 +92,7 @@ export function TablaUsuario() {
         if (fallbackError) {
           alert(`Error al actualizar perfil: ${fallbackError.message}`);
         } else {
-          alert(
-            "⚠️ Se actualizaron los datos (Nombre, Cédula y Rol).\n\nPara guardar y ver la clave en la tabla, ejecuta esta instrucción en el SQL Editor de tu Supabase:\n\nALTER TABLE perfiles ADD COLUMN password text;"
-          );
+          alert("🎉 ¡Nombre, Cédula y Rol actualizados con éxito!");
           setEditandoUser(null);
           obtenerUsuarios();
         }
@@ -116,7 +100,7 @@ export function TablaUsuario() {
         alert(`Error al actualizar: ${error.message}`);
       }
     } else {
-      alert("🎉 ¡Datos y clave actualizados con éxito!");
+      alert("🎉 ¡Datos de usuario actualizados con éxito!");
       setEditandoUser(null);
       obtenerUsuarios();
     }
@@ -131,7 +115,7 @@ export function TablaUsuario() {
           </IconBadge>
           <div>
             <h2>Gestión de Personal / Usuarios</h2>
-            <p className="subtitle">Consulta, visualiza contraseñas y asigna o modifica claves de acceso</p>
+            <p className="subtitle">Consulta roles, edita datos y cambia contraseñas de acceso</p>
           </div>
         </TitleGroup>
       </HeaderSection>
@@ -148,15 +132,12 @@ export function TablaUsuario() {
                   <th><MdPerson className="th-icon" /> Nombre</th>
                   <th><MdBadge className="th-icon" /> Cédula</th>
                   <th><MdSecurity className="th-icon" /> Rol Asignado</th>
-                  <th><MdKey className="th-icon" /> Clave / Contraseña</th>
                   <th style={{ textAlign: "center" }}>Acciones</th>
                 </tr>
               </thead>
               <tbody>
                 {usuarios.map((usr) => {
                   const esModoEdicion = editandoUser === usr.id;
-                  const claveVisible = visibilidadClaves[usr.id];
-                  const tieneClave = usr.password && usr.password.trim() !== "";
 
                   return (
                     <tr key={usr.id}>
@@ -206,51 +187,29 @@ export function TablaUsuario() {
                         )}
                       </td>
 
-                      {/* CLAVE / CONTRASEÑA */}
-                      <td>
-                        {esModoEdicion ? (
-                          <InputInline
-                            type="text"
-                            value={passwordEdit}
-                            onChange={(e) => setPasswordEdit(e.target.value)}
-                            placeholder="Escribe la nueva clave..."
-                          />
-                        ) : tieneClave ? (
-                          <PasswordBox>
-                            <span className="password-text">
-                              {claveVisible ? usr.password : "••••••••"}
-                            </span>
-                            <EyeButton
-                              type="button"
-                              onClick={() => toggleMostrarClave(usr.id)}
-                              title={claveVisible ? "Ocultar clave" : "Ver clave"}
-                            >
-                              {claveVisible ? <MdVisibilityOff /> : <MdVisibility />}
-                            </EyeButton>
-                          </PasswordBox>
-                        ) : (
-                          <SetPasswordBadge onClick={() => activarEdicion(usr)} title="Click para asignar una clave a este usuario">
-                            <MdAddAlert /> Sin clave (Asignar)
-                          </SetPasswordBadge>
-                        )}
-                      </td>
-
                       {/* ACCIONES */}
                       <td>
                         <ActionCell>
                           {esModoEdicion ? (
-                            <>
+                            <EditBoxInline>
+                              <InputInline
+                                type="password"
+                                value={passwordEdit}
+                                onChange={(e) => setPasswordEdit(e.target.value)}
+                                placeholder="Nueva clave (opcional)..."
+                                style={{ minWidth: "150px" }}
+                              />
                               <BtnSave onClick={() => handleGuardarEdicion(usr.id)}>
                                 <MdSave /> Guardar
                               </BtnSave>
                               <BtnCancel onClick={() => setEditandoUser(null)}>
                                 <MdClose /> Cancelar
                               </BtnCancel>
-                            </>
+                            </EditBoxInline>
                           ) : (
                             <>
                               <BtnEdit onClick={() => activarEdicion(usr)}>
-                                <MdEdit /> Editar
+                                <MdEdit /> Editar / Cambiar Clave
                               </BtnEdit>
                               <BtnDelete onClick={() => handleEliminar(usr.id, usr.nombre)}>
                                 <MdDelete /> Eliminar
@@ -270,8 +229,6 @@ export function TablaUsuario() {
           <CardsWrapper>
             {usuarios.map((usr) => {
               const esModoEdicion = editandoUser === usr.id;
-              const claveVisible = visibilidadClaves[usr.id];
-              const tieneClave = usr.password && usr.password.trim() !== "";
 
               return (
                 <UserCard key={usr.id}>
@@ -301,9 +258,9 @@ export function TablaUsuario() {
                         <option value="administrador">Administrador del Pozo</option>
                       </SelectInline>
 
-                      <label>Clave / Contraseña:</label>
+                      <label><MdVpnKey /> Cambiar Clave (opcional):</label>
                       <InputInline
-                        type="text"
+                        type="password"
                         value={passwordEdit}
                         onChange={(e) => setPasswordEdit(e.target.value)}
                         placeholder="Escribe la nueva clave..."
@@ -330,30 +287,9 @@ export function TablaUsuario() {
                         </RoleBadge>
                       </CardHeader>
 
-                      <CardRow>
-                        <span className="label"><MdKey /> Clave:</span>
-                        {tieneClave ? (
-                          <PasswordBox>
-                            <span className="password-text">
-                              {claveVisible ? usr.password : "••••••••"}
-                            </span>
-                            <EyeButton
-                              type="button"
-                              onClick={() => toggleMostrarClave(usr.id)}
-                            >
-                              {claveVisible ? <MdVisibilityOff /> : <MdVisibility />}
-                            </EyeButton>
-                          </PasswordBox>
-                        ) : (
-                          <SetPasswordBadge onClick={() => activarEdicion(usr)}>
-                            <MdAddAlert /> Sin clave (Asignar)
-                          </SetPasswordBadge>
-                        )}
-                      </CardRow>
-
                       <CardActions>
                         <BtnEdit onClick={() => activarEdicion(usr)}>
-                          <MdEdit /> Editar
+                          <MdEdit /> Editar / Clave
                         </BtnEdit>
                         <BtnDelete onClick={() => handleEliminar(usr.id, usr.nombre)}>
                           <MdDelete /> Eliminar
@@ -371,7 +307,7 @@ export function TablaUsuario() {
   );
 }
 
-// 🎨 STYLED COMPONENTS GLASSMORPHISM TABLE
+// 🎨 STYLED COMPONENTS
 const Container = styled.div`
   animation: fadeIn 0.3s ease-out;
 `;
@@ -522,64 +458,16 @@ const RoleBadge = styled.span`
   }
 `;
 
-const PasswordBox = styled.div`
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  background: rgba(15, 23, 42, 0.6);
-  border: 1px solid rgba(0, 195, 255, 0.3);
-  padding: 6px 10px;
-  border-radius: 8px;
-
-  .password-text {
-    font-family: monospace;
-    font-size: 13px;
-    color: #00c3ff;
-    letter-spacing: 1px;
-    min-width: 80px;
-  }
-`;
-
-const SetPasswordBadge = styled.button`
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  background: rgba(245, 158, 11, 0.15);
-  color: #f59e0b;
-  border: 1px solid rgba(245, 158, 11, 0.3);
-  padding: 6px 10px;
-  border-radius: 8px;
-  font-size: 12px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s ease;
-
-  &:hover {
-    background: #f59e0b;
-    color: #0b0f19;
-  }
-`;
-
-const EyeButton = styled.button`
-  background: none;
-  border: none;
-  color: #94a3b8;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 16px;
-  transition: color 0.15s;
-
-  &:hover {
-    color: #ffffff;
-  }
-`;
-
 const ActionCell = styled.div`
   display: flex;
   gap: 8px;
   justify-content: center;
+`;
+
+const EditBoxInline = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 8px;
 `;
 
 const BtnEdit = styled.button`
@@ -734,26 +622,6 @@ const CardHeader = styled.div`
   }
 `;
 
-const CardRow = styled.div`
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding-top: 8px;
-  border-top: 1px solid rgba(255, 255, 255, 0.05);
-
-  .label {
-    font-size: 13px;
-    color: #94a3b8;
-    display: flex;
-    align-items: center;
-    gap: 6px;
-
-    svg {
-      color: #00c3ff;
-    }
-  }
-`;
-
 const CardActions = styled.div`
   display: flex;
   gap: 10px;
@@ -774,5 +642,8 @@ const CardForm = styled.div`
     font-size: 12px;
     color: #94a3b8;
     font-weight: 500;
+    display: flex;
+    align-items: center;
+    gap: 4px;
   }
 `;
