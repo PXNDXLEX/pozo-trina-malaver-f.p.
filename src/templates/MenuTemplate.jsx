@@ -49,6 +49,36 @@ export function MenuTemplate({ children }) {
     setActiveDropdown(null);
   }, [location.pathname]);
 
+  // 🔄 Sincronizar automáticamente el nombre real del usuario desde Supabase perfiles
+  useEffect(() => {
+    const syncPerfilUsuario = async () => {
+      if (!user?.id) return;
+      try {
+        const { data, error } = await supabase
+          .from("perfiles")
+          .select("nombre, rol")
+          .eq("id", user.id)
+          .maybeSingle();
+
+        if (!error && data && data.nombre) {
+          if (data.nombre !== user.name || (data.rol && data.rol !== user.role)) {
+            const userActualizado = {
+              ...user,
+              name: data.nombre,
+              role: data.rol || user.role,
+            };
+            localStorage.setItem("user", JSON.stringify(userActualizado));
+            useAuthStore.setState({ user: userActualizado });
+          }
+        }
+      } catch (err) {
+        console.error("Error al sincronizar perfil:", err);
+      }
+    };
+
+    syncPerfilUsuario();
+  }, [user?.id]);
+
   const toggleDropdown = (menuName) => {
     setActiveDropdown(activeDropdown === menuName ? null : menuName);
   };

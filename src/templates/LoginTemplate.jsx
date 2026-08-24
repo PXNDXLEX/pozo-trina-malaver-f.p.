@@ -24,7 +24,7 @@ export function LoginTemplate() {
 
       const { data: perfilData, error: perfilError } = await supabase
         .from("perfiles")
-        .select("email, rol")
+        .select("nombre, email, rol")
         .eq("cedula", cedulaLimpia);
 
       if (perfilError || !perfilData || perfilData.length === 0) {
@@ -35,6 +35,7 @@ export function LoginTemplate() {
 
       const correoReal = perfilData[0].email;
       const rolAsignado = perfilData[0].rol;
+      const nombreReal = perfilData[0].nombre || `C.I. ${cedulaLimpia}`;
 
       const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
         email: correoReal,
@@ -49,7 +50,7 @@ export function LoginTemplate() {
 
       const userData = {
         id: authData.user.id,
-        name: `C.I. ${cedulaLimpia}`,
+        name: nombreReal,
         role: rolAsignado,
       };
 
