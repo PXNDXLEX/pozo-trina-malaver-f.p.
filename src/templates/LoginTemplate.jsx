@@ -113,6 +113,7 @@ export function LoginTemplate() {
             {loading ? "Ingresando..." : "Ingresar"}
           </button>
         </form>
+        <footer className="footer-otto">otto 2026</footer>
       </div>
     </Container>
   );
@@ -138,6 +139,14 @@ const Container = styled.div`
 
   h2 { margin-bottom: 5px; }
   p { color: #888; font-size: 14px; margin-bottom: 30px; }
+
+  .footer-otto {
+    margin-top: 20px;
+    font-size: 13px;
+    color: #888;
+    border-top: 1px solid #333;
+    padding-top: 15px;
+  }
 
   .input-group {
     text-align: left;
