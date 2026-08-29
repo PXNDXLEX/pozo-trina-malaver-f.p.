@@ -1,26 +1,31 @@
 import { useEffect, useState, useMemo } from "react";
 import styled from "styled-components";
 import { supabase } from "../supabase/supabase.config";
+import { MdSearch, MdCalendarToday, MdLocalShipping, MdAttachMoney } from "react-icons/md";
 
 export function TablaContabilidad() {
   const [datosBase, setDatosBase] = useState([]);
-  const [filtroDias, setFiltroDias] = useState(7); // Estado dinámico para el rango de tiempo
-  const [busqueda, setBusqueda] = useState("");   // Estado para el buscador por nombre
+  const [filtroDias, setFiltroDias] = useState(30); // Predeterminado 30 días
+  const [busqueda, setBusqueda] = useState("");
   const [cargando, setCargando] = useState(false);
 
   const consultarSupabase = async (dias) => {
     setCargando(true);
-    const fechaLimite = new Date();
-    fechaLimite.setDate(fechaLimite.getDate() - dias);
-    const fechaFiltroISO = fechaLimite.toISOString();
-
-    const { data, error } = await supabase
+    let query = supabase
       .from("registros_carga")
       .select(`
         monto,
+        fecha_carga,
         camiones ( chofer )
-      `)
-      .gte("fecha_carga", fechaFiltroISO);
+      `);
+
+    if (dias !== 3650) {
+      const fechaLimite = new Date();
+      fechaLimite.setDate(fechaLimite.getDate() - dias);
+      query = query.gte("fecha_carga", fechaLimite.toISOString());
+    }
+
+    const { data, error } = await query;
 
     if (!error && data) {
       setDatosBase(data);
@@ -28,34 +33,29 @@ export function TablaContabilidad() {
     setCargando(false);
   };
 
-  // Cada vez que cambie el selector de días, se vuelve a consultar la base de datos
   useEffect(() => {
     consultarSupabase(filtroDias);
   }, [filtroDias]);
 
-  // Procesamos y agrupamos los datos localmente de forma eficiente con useMemo
   const resumenProcesado = useMemo(() => {
     const agrupado = datosBase.reduce((acc, item) => {
-      // Validamos que exista la relación con camiones para evitar errores
       const nombre = item.camiones?.chofer || "Sin Asignar";
       
       if (!acc[nombre]) {
         acc[nombre] = { nombre, totalDinero: 0, viajes: 0 };
       }
-      acc[nombre].totalDinero += item.monto;
+      acc[nombre].totalDinero += Number(item.monto) || 0;
       acc[nombre].viajes += 1;
       return acc;
     }, {});
 
     const listaFormateada = Object.values(agrupado);
 
-    // Filtramos dinámicamente por lo que escriba el usuario en el buscador
     return listaFormateada.filter((chofer) =>
       chofer.nombre.toLowerCase().includes(busqueda.toLowerCase())
     );
   }, [datosBase, busqueda]);
 
-  // Calculamos los totales generales de la parte inferior
   const totalesGenerales = useMemo(() => {
     return resumenProcesado.reduce(
       (acc, item) => {
@@ -67,27 +67,38 @@ export function TablaContabilidad() {
     );
   }, [resumenProcesado]);
 
+  const formatearDinero = (val) => {
+    return "$" + Number(val).toLocaleString("es-ES", { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+  };
+
   return (
     <SeccionContabilidad>
       <ControlesSuperiores>
-        {/* BUSCADOR EN TIEMPO REAL */}
-        <InputBuscar
-          type="text"
-          placeholder="🔍 Buscar chofer..."
-          value={busqueda}
-          onChange={(e) => setBusqueda(e.target.value)}
-        />
+        {/* BUSCADOR */}
+        <InputWrapper>
+          <MdSearch className="search-icon" />
+          <InputBuscar
+            type="text"
+            placeholder="Buscar chofer..."
+            value={busqueda}
+            onChange={(e) => setBusqueda(e.target.value)}
+          />
+        </InputWrapper>
 
         {/* SELECTOR DE TIEMPO DINÁMICO */}
-        <SelectTiempo
-          value={filtroDias}
-          onChange={(e) => setFiltroDias(Number(e.target.value))}
-        >
-          <option value={1}>Hoy</option>
-          <option value={7}>Últimos 7 días</option>
-          <option value={15}>Últimas 2 semanas</option>
-          <option value={30}>Últimos 30 días</option>
-        </SelectTiempo>
+        <SelectWrapper>
+          <MdCalendarToday className="calendar-icon" />
+          <SelectTiempo
+            value={filtroDias}
+            onChange={(e) => setFiltroDias(Number(e.target.value))}
+          >
+            <option value={1}>Hoy</option>
+            <option value={7}>Últimos 7 días</option>
+            <option value={15}>Últimas 2 semanas</option>
+            <option value={30}>Últimos 30 días</option>
+            <option value={3650}>Todo el Histórico</option>
+          </SelectTiempo>
+        </SelectWrapper>
       </ControlesSuperiores>
 
       {cargando ? (
@@ -97,9 +108,9 @@ export function TablaContabilidad() {
           <TablaEstilizada>
             <thead>
               <tr>
-                <th>Chofer</th>
+                <th><MdLocalShipping className="th-icon" /> Chofer</th>
                 <th>Viajes Totales</th>
-                <th>Total Recaudado</th>
+                <th><MdAttachMoney className="th-icon" /> Total Recaudado</th>
               </tr>
             </thead>
             <tbody>
@@ -107,27 +118,26 @@ export function TablaContabilidad() {
                 resumenProcesado.map((c, i) => (
                   <tr key={i}>
                     <td className="nombre-chofer">{c.nombre}</td>
-                    <td>{c.viajes} </td>
+                    <td><span className="viajes-badge">{c.viajes} viajes</span></td>
                     <td className="monto-recaudado">
-                      ${c.totalDinero.toLocaleString()}
+                      {formatearDinero(c.totalDinero)}
                     </td>
                   </tr>
                 ))
               ) : (
                 <tr>
-                  <td colSpan="3" style={{ textAlign: "center", color: "#8C9298" }}>
-                    No se encontraron registros para este criterio.
+                  <td colSpan="3" style={{ textAlign: "center", color: "#94a3b8", padding: "40px" }}>
+                    No se encontraron registros para el filtro seleccionado.
                   </td>
                 </tr>
               )}
             </tbody>
-            {/* FILA DE TOTALES GENERALES */}
             {resumenProcesado.length > 0 && (
               <tfoot>
                 <tr>
                   <td>Total General</td>
-                  <td>{totalesGenerales.viajes}</td>
-                  <td>${totalesGenerales.dinero.toLocaleString()}</td>
+                  <td>{totalesGenerales.viajes} viajes</td>
+                  <td>{formatearDinero(totalesGenerales.dinero)}</td>
                 </tr>
               </tfoot>
             )}
@@ -138,101 +148,175 @@ export function TablaContabilidad() {
   );
 }
 
-/* --- ESTILOS COMPATIBLES CON TU INTERFAZ OSCURA --- */
-
+// 🎨 STYLED COMPONENTS DARK GLASSMORPHISM FOR CONTABILIDAD
 const SeccionContabilidad = styled.div`
-  padding: 20px;
-  background: #171717; /* Sigue la paleta dark de tus tarjetas */
-  border-radius: 12px;
-  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
-  margin: 20px;
+  animation: fadeIn 0.3s ease-out;
 `;
 
 const ControlesSuperiores = styled.div`
   display: flex;
-  gap: 15px;
+  gap: 16px;
   margin-bottom: 20px;
-  flex-wrap: wrap; /* Ajuste automático para pantallas pequeñas */
+  flex-wrap: wrap;
+`;
+
+const InputWrapper = styled.div`
+  position: relative;
+  flex: 1;
+  min-width: 220px;
+  display: flex;
+  align-items: center;
+
+  .search-icon {
+    position: absolute;
+    left: 14px;
+    font-size: 20px;
+    color: #64748b;
+  }
 `;
 
 const InputBuscar = styled.input`
-  flex: 1;
-  min-width: 200px;
-  padding: 10px 15px;
-  background: #202020;
-  border: 1px solid #37464F;
-  border-radius: 6px;
-  color: #fff;
+  width: 100%;
+  padding: 12px 14px 12px 42px;
+  background: rgba(15, 23, 42, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  color: #ffffff;
+  font-size: 14px;
   outline: none;
+  transition: all 0.2s ease;
+  box-sizing: border-box;
+
+  &::placeholder {
+    color: #64748b;
+  }
+
   &:focus {
-    border-color: #1cb0f6;
+    border-color: #00c3ff;
+    background: rgba(15, 23, 42, 0.85);
+    box-shadow: 0 0 12px rgba(0, 195, 255, 0.25);
+  }
+`;
+
+const SelectWrapper = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(15, 23, 42, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 0 14px;
+  border-radius: 12px;
+
+  .calendar-icon {
+    color: #00c3ff;
+    font-size: 18px;
   }
 `;
 
 const SelectTiempo = styled.select`
-  padding: 10px 15px;
-  background: #202020;
-  border: 1px solid #37464F;
-  border-radius: 6px;
-  color: #fff;
+  padding: 12px 0;
+  background: none;
+  border: none;
+  color: #ffffff;
+  font-size: 14px;
+  font-weight: 500;
   cursor: pointer;
   outline: none;
-  &:focus {
-    border-color: #1cb0f6;
+
+  option {
+    background: #151c2c;
+    color: #ffffff;
   }
 `;
 
 const ContenedorTabla = styled.div`
-  overflow-x: auto; /* Permite scroll horizontal si la pantalla es muy chica */
+  background: rgba(21, 28, 45, 0.7);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
 `;
 
 const TablaEstilizada = styled.table`
-
   width: 100%;
   border-collapse: collapse;
-   text-align: center; 
-  color: #fff;
+  text-align: left;
 
+  thead {
+    background: rgba(15, 23, 42, 0.8);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
 
-  th, td {
-    padding: 14px 16px;
-    border-bottom: 1px solid #37464F;
+    th {
+      padding: 16px 20px;
+      font-size: 13px;
+      font-weight: 600;
+      color: #94a3b8;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+
+      .th-icon {
+        vertical-align: middle;
+        margin-right: 6px;
+        font-size: 16px;
+        color: #00c3ff;
+      }
+    }
   }
 
-  th {
-    background-color: #202020;
-    color: #8C9298;
-    font-weight: 600;
-    text-transform: uppercase;
-    font-size: 12px;
-    letter-spacing: 0.5px;
-  }
+  tbody {
+    tr {
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+      transition: background 0.15s ease;
 
-  tbody tr:hover {
-    background-color: rgba(255, 255, 255, 0.03); /* Efecto hover sutil */
+      &:hover {
+        background: rgba(255, 255, 255, 0.03);
+      }
+    }
+
+    td {
+      padding: 16px 20px;
+      font-size: 14px;
+      color: #f8fafc;
+    }
   }
 
   .nombre-chofer {
-    font-weight: 500;
+    font-weight: 600;
+    color: #ffffff;
+  }
+
+  .viajes-badge {
+    background: rgba(255, 255, 255, 0.06);
+    padding: 4px 10px;
+    border-radius: 8px;
+    font-size: 12px;
+    color: #cbd5e1;
   }
 
   .monto-recaudado {
-    color: #4cd137; /* Verde suave para destacar el dinero */
-    font-weight: bold;
+    color: #10b981;
+    font-weight: 700;
   }
 
   tfoot tr {
-    background-color: #202020;
-    font-weight: bold;
+    background: rgba(15, 23, 42, 0.9);
+    font-weight: 700;
+
     td {
-      border-bottom: none;
-      color: #1cb0f6; /* Destaca los totales con tu azul principal */
+      padding: 16px 20px;
+      border-top: 1px solid rgba(0, 195, 255, 0.3);
+      color: #00c3ff;
+      font-size: 15px;
     }
   }
 `;
 
 const MensajeEstado = styled.div`
   text-align: center;
-  color: #8C9298;
+  color: #94a3b8;
   padding: 40px;
+  background: rgba(21, 28, 45, 0.5);
+  border-radius: 16px;
+  border: 1px dashed rgba(255, 255, 255, 0.1);
 `;

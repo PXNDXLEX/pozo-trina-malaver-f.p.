@@ -1,189 +1,289 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { supabase } from "../supabase/supabase.config";
 import styled from "styled-components";
+import { MdPersonAdd, MdBadge, MdEmail, MdLock, MdWork, MdPerson } from "react-icons/md";
 
-
-export function FormularioUsuario({ onUsuarioRegistrado, onCancelar }) {
-  const [nombre, setNombre] = useState('');
-  const [cedula, setCedula] = useState('');
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [rol, setRol] = useState('administrador');
+export function FormularioUsuario({ onUsuarioRegistrado }) {
+  const [nombre, setNombre] = useState("");
+  const [cedula, setCedula] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [rol, setRol] = useState("administrador");
   const [loading, setLoading] = useState(false);
 
   const handleRegistrar = async (e) => {
     e.preventDefault();
     setLoading(true);
-    
-    const { data: authData, error: authError } = await supabase.auth.signUp({
-      email,
-      password,
-    });
 
-    if (authError) {
-      alert(`Error en Autenticación: ${authError.message}`);
-      setLoading(false);
-      return;
-    }
+    try {
+      const { data: authData, error: authError } = await supabase.auth.signUp({
+        email,
+        password,
+      });
 
-    if (authData?.user) {
-      const { error: profileError } = await supabase
-        .from('perfiles')
-        .insert([
-          {
-            id: authData.user.id,
-            cedula,
-            nombre,
-            email,
-            rol,
-            activo: true
-          }
-        ]);
-
-      if (profileError) {
-        alert(`Error al guardar perfil: ${profileError.message}`);
-      } else {
-        alert('🎉 ¡Usuario registrado con éxito!');
-        setNombre(''); setCedula(''); setEmail(''); setPassword('');
-        onUsuarioRegistrado(); 
+      if (authError) {
+        alert(`Error en Autenticación: ${authError.message}`);
+        setLoading(false);
+        return;
       }
+
+      if (authData?.user) {
+        const perfilBase = {
+          id: authData.user.id,
+          cedula,
+          nombre,
+          email,
+          rol,
+          activo: true,
+        };
+
+        // Intentamos guardar incluyendo la clave
+        const { error: profileError } = await supabase
+          .from("perfiles")
+          .insert([{ ...perfilBase, password }]);
+
+        if (profileError) {
+          // Si la columna 'password' no existe aún en la tabla de Supabase (PGRST204)
+          if (profileError.code === "PGRST204" || profileError.message.includes("password")) {
+            const { error: fallbackError } = await supabase
+              .from("perfiles")
+              .insert([perfilBase]);
+
+            if (fallbackError) {
+              alert(`Error al guardar perfil: ${fallbackError.message}`);
+            } else {
+              alert("🎉 ¡Usuario registrado con éxito! (Nota: Agrega la columna 'password' en Supabase para habilitar la visualización de la clave).");
+              limpiarFormulario();
+            }
+          } else {
+            alert(`Error al guardar perfil: ${profileError.message}`);
+          }
+        } else {
+          alert("🎉 ¡Usuario registrado con éxito!");
+          limpiarFormulario();
+        }
+      }
+    } catch (error) {
+      console.error("Error al registrar usuario:", error);
+      alert("Ocurrió un error inesperado al registrar el usuario.");
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
+  };
+
+  const limpiarFormulario = () => {
+    setNombre("");
+    setCedula("");
+    setEmail("");
+    setPassword("");
+    if (onUsuarioRegistrado) onUsuarioRegistrado();
   };
 
   return (
-    <div style={containerStyle}>
-      <div style={headerRowStyle}>
-        <h2 style={titleStyle}>Registrar Nuevo Usuario</h2>
-       
-      </div>
-      
-      <form onSubmit={handleRegistrar} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-        
+    <FormContainer>
+      <HeaderGroup>
+        <IconBadge>
+          <MdPersonAdd />
+        </IconBadge>
         <div>
-          <label style={labelStyle}>Nombre Completo:</label>
-          <input 
-            type="text" 
-            placeholder="Ej: Juan Pérez" 
-            value={nombre} 
-            onChange={e => setNombre(e.target.value)} 
-            required 
-            style={inputStyle} 
-          />
+          <h2>Registrar Nuevo Usuario</h2>
+          <p className="subtitle">Completa los datos para asignar accesos al sistema</p>
         </div>
+      </HeaderGroup>
 
-        <div>
-          <label style={labelStyle}>Número de Cédula:</label>
-          <input 
-            type="text" 
-            placeholder="Ej: 12345678" 
-            value={cedula} 
-            onChange={e => setCedula(e.target.value)} 
-            required 
-            style={inputStyle} 
-          />
-        </div>
+      <FormCard onSubmit={handleRegistrar}>
+        <InputGrid>
+          <FieldBox>
+            <label><MdPerson className="field-icon" /> Nombre Completo:</label>
+            <input
+              type="text"
+              placeholder="Ej: Juan Pérez"
+              value={nombre}
+              onChange={(e) => setNombre(e.target.value)}
+              required
+            />
+          </FieldBox>
 
-        <div>
-          <label style={labelStyle}>Correo Electrónico:</label>
-          <input 
-            type="email" 
-            placeholder="Ej: usuario@correo.com" 
-            value={email} 
-            onChange={e => setEmail(e.target.value)} 
-            required 
-            style={inputStyle} 
-          />
-        </div>
+          <FieldBox>
+            <label><MdBadge className="field-icon" /> Número de Cédula:</label>
+            <input
+              type="text"
+              placeholder="Ej: 12345678"
+              value={cedula}
+              onChange={(e) => setCedula(e.target.value)}
+              required
+            />
+          </FieldBox>
 
-        <div>
-          <label style={labelStyle}>Contraseña de Ingreso:</label>
-          <input 
-            type="password" 
-            placeholder="Mínimo 6 caracteres" 
-            value={password} 
-            onChange={e => setPassword(e.target.value)} 
-            required 
-            style={inputStyle} 
-          />
-        </div>
-        
-        <div>
-          <label style={labelStyle}>Rol en el Sistema:</label>
-          <select value={rol} onChange={e => setRol(e.target.value)} style={selectStyle}>
-            <option value="registrador">Vendedor / Recargador</option>
-            <option value="camionero">Chofer de Cisterna</option>
-            <option value="administrador">Administrador del Pozo</option>
-          </select>
-        </div>
+          <FieldBox>
+            <label><MdEmail className="field-icon" /> Correo Electrónico:</label>
+            <input
+              type="email"
+              placeholder="Ej: usuario@correo.com"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+            />
+          </FieldBox>
 
-        <button type="submit" disabled={loading} style={submitBtnStyle}>
-          {loading ? 'Registrando...' : 'Registrar Usuario'}
-        </button>
+          <FieldBox>
+            <label><MdLock className="field-icon" /> Contraseña de Ingreso:</label>
+            <input
+              type="password"
+              placeholder="Mínimo 6 caracteres"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+            />
+          </FieldBox>
 
-      </form>
-    </div>
+          <FieldBox style={{ gridColumn: "1 / -1" }}>
+            <label><MdWork className="field-icon" /> Rol en el Sistema:</label>
+            <select value={rol} onChange={(e) => setRol(e.target.value)}>
+              <option value="registrador">Vendedor / Recargador</option>
+              <option value="camionero">Chofer de Cisterna</option>
+              <option value="administrador">Administrador del Pozo</option>
+            </select>
+          </FieldBox>
+        </InputGrid>
+
+        <SubmitBtn type="submit" disabled={loading}>
+          {loading ? "Registrando Usuario..." : "Registrar Usuario"}
+        </SubmitBtn>
+      </FormCard>
+    </FormContainer>
   );
 }
 
-// 🎨 ESTILOS IDÉNTICOS A TU PANTALLA DE CAMIONES
-const containerStyle = {
-  backgroundColor: '#121212', // Fondo oscuro idéntico
-  padding: '40px',
-  minHeight: '100vh',
-  fontFamily: 'sans-serif',
-  color: '#fff'
-};
+// 🎨 STYLED COMPONENTS MODERN GLASSMORPHIC FORM
+const FormContainer = styled.div`
+  max-width: 700px;
+  margin: 0 auto;
+  animation: fadeIn 0.3s ease-out;
+`;
 
-const headerRowStyle = {
-  display: 'flex',
-  justifyContent: 'space-between',
-  alignItems: 'center',
-  marginBottom: '30px'
-};
+const HeaderGroup = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 24px;
 
-const titleStyle = {
-  fontSize: '24px',
-  fontWeight: 'bold',
-  margin: 0
-};
+  h2 {
+    font-size: 22px;
+    font-weight: 700;
+    color: #ffffff;
+    margin: 0 0 4px 0;
+  }
 
+  .subtitle {
+    color: #94a3b8;
+    font-size: 13px;
+    margin: 0;
+  }
+`;
 
+const IconBadge = styled.div`
+  width: 48px;
+  height: 48px;
+  border-radius: 14px;
+  background: linear-gradient(135deg, rgba(0, 195, 255, 0.2), rgba(0, 114, 255, 0.2));
+  border: 1px solid rgba(0, 195, 255, 0.3);
+  color: #00c3ff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+`;
 
-const labelStyle = {
-  display: 'block',
-  fontSize: '14px',
-  color: '#888', // Gris atenuado para etiquetas
-  marginBottom: '8px'
-};
+const FormCard = styled.form`
+  background: rgba(21, 28, 45, 0.75);
+  backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 20px;
+  padding: 32px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
 
-const inputStyle = {
-  width: '100%',
-  padding: '14px',
-  backgroundColor: '#1c1c1c', // Caja de entrada gris oscuro
-  border: '1px solid #2d2d2d',
-  borderRadius: '8px',
-  color: '#fff',
-  fontSize: '16px',
-  outline: 'none',
-  boxSizing: 'border-box'
-};
+  @media (max-width: 600px) {
+    padding: 20px;
+  }
+`;
 
-const selectStyle = {
-  ...inputStyle,
-  cursor: 'pointer'
-};
+const InputGrid = styled.div`
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 20px;
+  margin-bottom: 24px;
+`;
 
-const submitBtnStyle = {
-  width: '100%',
-  padding: '16px',
-  backgroundColor: '#00c3ff', // Azul brillante de tu botón
-  color: '#000', // Texto oscuro encima del botón
-  border: 'none',
-  borderRadius: '8px',
-  fontSize: '16px',
-  fontWeight: 'bold',
-  cursor: 'pointer',
-  marginTop: '10px',
-  transition: 'background-color 0.2s'
-};
+const FieldBox = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+
+  label {
+    font-size: 13px;
+    font-weight: 500;
+    color: #cbd5e1;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+
+    .field-icon {
+      color: #00c3ff;
+      font-size: 16px;
+    }
+  }
+
+  input, select {
+    width: 100%;
+    padding: 13px 14px;
+    background: rgba(15, 23, 42, 0.6);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 12px;
+    color: #ffffff;
+    font-size: 14px;
+    outline: none;
+    transition: all 0.2s ease;
+    box-sizing: border-box;
+
+    &:focus {
+      border-color: #00c3ff;
+      background: rgba(15, 23, 42, 0.85);
+      box-shadow: 0 0 12px rgba(0, 195, 255, 0.25);
+    }
+  }
+
+  select {
+    cursor: pointer;
+    option {
+      background: #151c2c;
+      color: #ffffff;
+    }
+  }
+`;
+
+const SubmitBtn = styled.button`
+  width: 100%;
+  padding: 14px;
+  background: linear-gradient(135deg, #00c3ff 0%, #0072ff 100%);
+  color: #ffffff;
+  border: none;
+  border-radius: 12px;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 4px 15px rgba(0, 195, 255, 0.3);
+
+  &:hover:not(:disabled) {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 25px rgba(0, 195, 255, 0.45);
+  }
+
+  &:disabled {
+    background: #334155;
+    color: #94a3b8;
+    cursor: not-allowed;
+    box-shadow: none;
+  }
+`;

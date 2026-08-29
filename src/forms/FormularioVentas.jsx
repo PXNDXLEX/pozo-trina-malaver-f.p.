@@ -3,6 +3,7 @@ import { supabase } from "../supabase/supabase.config";
 import { useAuthStore } from "../store/AuthStore";
 import { jsPDF } from "jspdf";
 import styled from "styled-components";
+import { MdWaterDrop, MdLocalShipping, MdAttachMoney, MdPayments } from "react-icons/md";
 
 export function FormularioVentas({ OnVentaRealizada }) {
   const user = useAuthStore((state) => state.user);
@@ -131,107 +132,196 @@ export function FormularioVentas({ OnVentaRealizada }) {
   };
 
   return (
-    <FormContainer onSubmit={handleGuardarVenta}>
-      <div className="input-group">
-        <label>Seleccione el Camión</label>
-        <select
-          value={camionSeleccionadoId}
-          onChange={(e) => setCamionSeleccionadoId(e.target.value)}
-          required
-        >
-          <option value="">Seleccione...</option>
-          {listaCamiones.map((item) => (
-            <option key={item.id} value={item.id}>
-              {item.chofer} ({item.placa})
-            </option>
-          ))}
-        </select>
-      </div>
+    <FormContainer>
+      <HeaderGroup>
+        <IconBadge>
+          <MdWaterDrop />
+        </IconBadge>
+        <div>
+          <h2>Registrar Nueva Carga</h2>
+          <p className="subtitle">Selecciona el camión e ingresa los detalles del pago de la recarga</p>
+        </div>
+      </HeaderGroup>
 
-      <div className="input-group">
-        <label>Monto Pagado ($)</label>
-        <input
-          type="number"
-          step="0.01"
-          placeholder="Ej: 10.50"
-          value={monto}
-          onChange={(e) => setMonto(e.target.value)}
-          required
-        />
-      </div>
+      <FormCard onSubmit={handleGuardarVenta}>
+        <InputGrid>
+          <FieldBox style={{ gridColumn: "1 / -1" }}>
+            <label><MdLocalShipping className="field-icon" /> Seleccione el Camión:</label>
+            <select
+              value={camionSeleccionadoId}
+              onChange={(e) => setCamionSeleccionadoId(e.target.value)}
+              required
+            >
+              <option value="">Seleccione...</option>
+              {listaCamiones.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.chofer} ({item.placa})
+                </option>
+              ))}
+            </select>
+          </FieldBox>
 
-      <div className="input-group">
-        <label>Método de Pago</label>
-        <select value={metodo} onChange={(e) => setMetodo(e.target.value)}>
-          <option value="Efectivo">Efectivo</option>
-          <option value="Transferencia">Transferencia</option>
-          <option value="Pago Móvil">Pago Móvil</option>
-          <option value="Zelle">Zelle</option>
-        </select>
-      </div>
+          <FieldBox>
+            <label><MdAttachMoney className="field-icon" /> Monto Pagado ($):</label>
+            <input
+              type="number"
+              step="0.01"
+              placeholder="Ej: 10.50"
+              value={monto}
+              onChange={(e) => setMonto(e.target.value)}
+              required
+            />
+          </FieldBox>
 
-      <button type="submit" className="btn-submit" disabled={loading}>
-        {loading ? "Procesando..." : "Guardar Venta"}
-      </button>
+          <FieldBox>
+            <label><MdPayments className="field-icon" /> Método de Pago:</label>
+            <select value={metodo} onChange={(e) => setMetodo(e.target.value)}>
+              <option value="Efectivo">Efectivo</option>
+              <option value="Transferencia">Transferencia</option>
+              <option value="Pago Móvil">Pago Móvil</option>
+              <option value="Zelle">Zelle</option>
+            </select>
+          </FieldBox>
+        </InputGrid>
+
+        <SubmitBtn type="submit" disabled={loading}>
+          {loading ? "Procesando Venta..." : "Guardar Venta"}
+        </SubmitBtn>
+      </FormCard>
     </FormContainer>
   );
 }
 
-// Estilos CSS exactos clonados de tu captura de pantalla
-const FormContainer = styled.form`
-  width: 100%;
-  max-width: 800px;
+// 🎨 STYLED COMPONENTS MODERN GLASSMORPHIC FORM FOR RECARGAS
+const FormContainer = styled.div`
+  max-width: 650px;
+  margin: 0 auto;
+  animation: fadeIn 0.3s ease-out;
+`;
+
+const HeaderGroup = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 24px;
+
+  h2 {
+    font-size: 22px;
+    font-weight: 700;
+    color: #ffffff;
+    margin: 0 0 4px 0;
+  }
+
+  .subtitle {
+    color: #94a3b8;
+    font-size: 13px;
+    margin: 0;
+  }
+`;
+
+const IconBadge = styled.div`
+  width: 48px;
+  height: 48px;
+  border-radius: 14px;
+  background: linear-gradient(135deg, rgba(0, 195, 255, 0.2), rgba(0, 114, 255, 0.2));
+  border: 1px solid rgba(0, 195, 255, 0.3);
+  color: #00c3ff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+`;
+
+const FormCard = styled.form`
+  background: rgba(21, 28, 45, 0.75);
+  backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 20px;
+  padding: 32px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+
+  @media (max-width: 600px) {
+    padding: 20px;
+  }
+`;
+
+const InputGrid = styled.div`
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 20px;
+  margin-bottom: 24px;
+`;
+
+const FieldBox = styled.div`
   display: flex;
   flex-direction: column;
-  gap: 25px;
+  gap: 8px;
 
-  .input-group {
+  label {
+    font-size: 13px;
+    font-weight: 500;
+    color: #cbd5e1;
     display: flex;
-    flex-direction: column;
-    gap: 8px;
+    align-items: center;
+    gap: 6px;
 
-    label {
-      color: #888;
-      font-size: 14px;
-    }
-
-    input, select {
-      width: 100%;
-      padding: 14px;
-      background-color: #1a1a1a;
-      border: 1px solid #2a2a2a;
-      border-radius: 6px;
-      color: #fff;
-      font-size: 15px;
-      outline: none;
-      transition: border-color 0.2s;
-
-      &:focus {
-        border-color: #00c3ff;
-      }
+    .field-icon {
+      color: #00c3ff;
+      font-size: 16px;
     }
   }
 
-  .btn-submit {
+  input, select {
     width: 100%;
-    padding: 14px;
-    background-color: #00c3ff;
-    color: #000;
-    border: none;
-    border-radius: 6px;
-    font-size: 16px;
-    font-weight: bold;
-    cursor: pointer;
-    transition: background-color 0.2s;
+    padding: 13px 14px;
+    background: rgba(15, 23, 42, 0.6);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 12px;
+    color: #ffffff;
+    font-size: 14px;
+    outline: none;
+    transition: all 0.2s ease;
+    box-sizing: border-box;
 
-    &:hover {
-      background-color: #0099cc;
+    &:focus {
+      border-color: #00c3ff;
+      background: rgba(15, 23, 42, 0.85);
+      box-shadow: 0 0 12px rgba(0, 195, 255, 0.25);
     }
+  }
 
-    &:disabled {
-      background-color: #444;
-      color: #888;
-      cursor: not-allowed;
+  select {
+    cursor: pointer;
+    option {
+      background: #151c2c;
+      color: #ffffff;
     }
   }
 `;
+
+const SubmitBtn = styled.button`
+  width: 100%;
+  padding: 14px;
+  background: linear-gradient(135deg, #00c3ff 0%, #0072ff 100%);
+  color: #ffffff;
+  border: none;
+  border-radius: 12px;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 4px 15px rgba(0, 195, 255, 0.3);
+
+  &:hover:not(:disabled) {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 25px rgba(0, 195, 255, 0.45);
+  }
+
+  &:disabled {
+    background: #334155;
+    color: #94a3b8;
+    cursor: not-allowed;
+    box-shadow: none;
+  }
+`;
+

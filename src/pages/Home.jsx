@@ -1,21 +1,34 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useMemo } from "react";
 import { MenuTemplate } from "../templates/MenuTemplate";
 import { supabase } from "../supabase/supabase.config";
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, Legend } from "recharts";
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  LineChart,
+  Line,
+  Legend
+} from "recharts";
 import styled from "styled-components";
+import { MdTrendingUp, MdAttachMoney, MdLocalShipping, MdCalendarToday } from "react-icons/md";
 
 export function Home() {
-  const [dataBarras, setDataBarras] = useState([]);
-  const [dataLineas, setDataLineas] = useState([]);
+  const [dataRaw, setDataRaw] = useState([]);
+  const [filtroDias, setFiltroDias] = useState(3650); // 3650 = Todo el histórico por defecto
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     fetchVentas();
-  }, []);
+  }, [filtroDias]);
 
-    const fetchVentas = async () => {
+  const fetchVentas = async () => {
+    setLoading(true);
     try {
-      const { data, error } = await supabase
+      let query = supabase
         .from("registros_carga")
         .select(`
           monto,
@@ -24,124 +37,369 @@ export function Home() {
         `)
         .order("fecha_carga", { ascending: true });
 
+      // Si el filtro no es "Todo el histórico" (3650), aplicamos el filtro de fecha
+      if (filtroDias !== 3650) {
+        const fechaLimite = new Date();
+        fechaLimite.setDate(fechaLimite.getDate() - filtroDias);
+        query = query.gte("fecha_carga", fechaLimite.toISOString());
+      }
+
+      const { data, error } = await query;
       if (error) throw error;
 
-      // -------------------------------------------------------------
-      // 1. AGRUPAR PARA EL GRÁFICO DE BARRAS (Un camión = Una barra)
-      // -------------------------------------------------------------
-      const acumuladorCamiones = {};
-      // 🔴 NUEVO: Acumulador para agrupar las ventas por fecha única
-      const acumuladorFechas = {};
-
-      data.forEach((item) => {
-        // --- Procesar Camiones ---
-        const nombreCamion = item.camiones 
-          ? `${item.camiones.chofer.trim()} (${item.camiones.placa.trim()})` 
-          : "Desconocido";
-
-        const montoNumerico = Number(item.monto) || 0;
-
-        if (acumuladorCamiones[nombreCamion]) {
-          acumuladorCamiones[nombreCamion] += montoNumerico;
-        } else {
-          acumuladorCamiones[nombreCamion] = montoNumerico;
-        }
-
-        // --- Procesar Fechas (Evita que se encimen los puntos en la línea) ---
-        const fechaLimpia = item.fecha_carga ? item.fecha_carga.substring(0, 10) : "Sin fecha";
-        
-        if (acumuladorFechas[fechaLimpia]) {
-          acumuladorFechas[fechaLimpia] += montoNumerico; // Suma todas las ventas del mismo día
-        } else {
-          acumuladorFechas[fechaLimpia] = montoNumerico;
-        }
-      });
-
-      // Convertimos el acumulador de camiones a formato Recharts
-      const formatoBarras = Object.keys(acumuladorCamiones).map((key) => ({
-        camionIdentificador: key,
-        montoTotal: acumuladorCamiones[key],
-      }));
-
-      // 🔴 NUEVO: Convertimos el acumulador de fechas ordenadas a formato Recharts
-      const formatoLineas = Object.keys(acumuladorFechas).map((fecha) => ({
-        fecha: fecha,
-        monto: acumuladorFechas[fecha], // Ahora este valor será la suma total del día (ej: 4200)
-      }));
-
-      // Guardamos los datos limpios y agrupados en sus respectivos estados
-      setDataBarras(formatoBarras);
-      setDataLineas(formatoLineas);
-
+      setDataRaw(data || []);
     } catch (error) {
-      console.error("Error al cargar analíticas en Recharts:", error.message);
+      console.error("Error al cargar analíticas:", error.message);
     } finally {
       setLoading(false);
     }
   };
 
+  // Procesar datos para gráficos y métricas
+  const { dataBarras, dataLineas, metricas } = useMemo(() => {
+    const acumuladorCamiones = {};
+    const acumuladorFechas = {};
+    let acumuladoGeneral = 0;
+
+    dataRaw.forEach((item) => {
+      const nombreCamion = item.camiones
+        ? `${item.camiones.chofer.trim()} (${item.camiones.placa.trim()})`
+        : "Desconocido";
+
+      const montoNumerico = Number(item.monto) || 0;
+      acumuladoGeneral += montoNumerico;
+
+      if (acumuladorCamiones[nombreCamion]) {
+        acumuladorCamiones[nombreCamion] += montoNumerico;
+      } else {
+        acumuladorCamiones[nombreCamion] = montoNumerico;
+      }
+
+      const fechaLimpia = item.fecha_carga ? item.fecha_carga.substring(0, 10) : "Sin fecha";
+
+      if (acumuladorFechas[fechaLimpia]) {
+        acumuladorFechas[fechaLimpia] += montoNumerico;
+      } else {
+        acumuladorFechas[fechaLimpia] = montoNumerico;
+      }
+    });
+
+    const formatoBarras = Object.keys(acumuladorCamiones).map((key) => ({
+      camionIdentificador: key,
+      montoTotal: acumuladorCamiones[key],
+    }));
+
+    const formatoLineas = Object.keys(acumuladorFechas).map((fecha) => ({
+      fecha: fecha,
+      monto: acumuladorFechas[fecha],
+    }));
+
+    return {
+      dataBarras: formatoBarras,
+      dataLineas: formatoLineas,
+      metricas: {
+        totalIngresos: acumuladoGeneral,
+        totalCargas: dataRaw.length,
+        promedio: dataRaw.length > 0 ? (acumuladoGeneral / dataRaw.length).toFixed(2) : "0.00",
+      },
+    };
+  }, [dataRaw]);
+
+  // Formateador de moneda en español ($ X.XXX)
+  const formatearDinero = (val) => {
+    return "$" + Number(val).toLocaleString("es-ES", { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+  };
 
   return (
     <MenuTemplate>
       <DashboardContainer>
-        <h2>📊 Dashboard del Pozo - Ventas de Recargas</h2>
-        <p className="subtitle">Monitoreo operativo y financiero en tiempo real </p>
+        <HeaderSection>
+          <div>
+            <h2>📊 Dashboard - Pozo Trina Malaver</h2>
+            <p className="subtitle">Monitoreo operativo y financiero en tiempo real</p>
+          </div>
+
+          {/* SELECTOR DE RANGO DE TIEMPO SINCRO */}
+          <FilterControl>
+            <MdCalendarToday className="calendar-icon" />
+            <select value={filtroDias} onChange={(e) => setFiltroDias(Number(e.target.value))}>
+              <option value={3650}>Todo el Histórico</option>
+              <option value={30}>Últimos 30 días</option>
+              <option value={15}>Últimas 2 semanas</option>
+              <option value={7}>Últimos 7 días</option>
+              <option value={1}>Hoy</option>
+            </select>
+          </FilterControl>
+        </HeaderSection>
 
         {loading ? (
-          <div className="loading-box">Cargando analíticas del sistema...</div>
+          <LoadingBox>Cargando analíticas del sistema...</LoadingBox>
         ) : (
-          <div className="grid-charts">
-            
-            {/* Gráfico 1: Barras Consolidadas */}
-            <div className="chart-box">
-              <h3>Ingresos según Camión / Chofer</h3>
-              <ResponsiveContainer width="100%" height={340}>
-                <BarChart data={dataBarras}
-                margin={{ top: 10, right: 10, left: 10, bottom: 45 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#333" />
-                  <XAxis dataKey="camionIdentificador" stroke="#888" angle={-40} 
-                  textAnchor="end"   height={70} interval={0} tick={{ fontSize: 11 , fill: '#888'}} />
-                  <YAxis stroke="#888" />
-                  <Tooltip contentStyle={{ backgroundColor: "#222", border: "none", color: "#fff" }} />
-                  <Legend wrapperStyle={{ paddingTop: 20 }} />
-                  <Bar name="Monto Acumulado ($)" dataKey="montoTotal" fill="#00a8ff" radius={[4, 4, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
+          <>
+            {/* KPI METRIC CARDS */}
+            <MetricsGrid>
+              <MetricCard>
+                <div className="icon-badge blue">
+                  <MdAttachMoney />
+                </div>
+                <div className="info">
+                  <span className="label">
+                    Ingresos Totales {filtroDias === 3650 ? "(Histórico)" : `(${filtroDias} días)`}
+                  </span>
+                  <h3 className="value">{formatearDinero(metricas.totalIngresos)}</h3>
+                </div>
+              </MetricCard>
 
-            {/* Gráfico 2: Líneas Temporal */}
-            <div className="chart-box">
-              <h3>Historial Dinámico de Ingresos</h3>
-              <ResponsiveContainer width="100%" height={300}>
-                <LineChart data={dataLineas}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#333" />
-                  <XAxis dataKey="fecha" stroke="#888" tick={{ fontSize: 11 }} />
-                  <YAxis stroke="#888" />
-                  <Tooltip contentStyle={{ backgroundColor: "#222", border: "none", color: "#fff" }} />
-                  <Legend />
-                  <Line name="Evolución ($)" type="monotone" dataKey="monto" stroke="#00e676" strokeWidth={3} dot={{ r: 4 }} />
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
+              <MetricCard>
+                <div className="icon-badge green">
+                  <MdLocalShipping />
+                </div>
+                <div className="info">
+                  <span className="label">Total Cargas / Ventas</span>
+                  <h3 className="value">{metricas.totalCargas} viajes</h3>
+                </div>
+              </MetricCard>
 
-          </div>
+              <MetricCard>
+                <div className="icon-badge purple">
+                  <MdTrendingUp />
+                </div>
+                <div className="info">
+                  <span className="label">Promedio por Carga</span>
+                  <h3 className="value">{formatearDinero(metricas.promedio)}</h3>
+                </div>
+              </MetricCard>
+            </MetricsGrid>
+
+            {/* CHARTS GRID */}
+            <GridCharts>
+              <ChartBox>
+                <h3>Ingresos Acumulados por Camión / Chofer</h3>
+                <ResponsiveContainer width="100%" height={340}>
+                  <BarChart data={dataBarras} margin={{ top: 10, right: 10, left: 10, bottom: 45 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255, 255, 255, 0.08)" />
+                    <XAxis
+                      dataKey="camionIdentificador"
+                      stroke="#94a3b8"
+                      angle={-35}
+                      textAnchor="end"
+                      height={70}
+                      interval={0}
+                      tick={{ fontSize: 11, fill: "#94a3b8" }}
+                    />
+                    <YAxis stroke="#94a3b8" tick={{ fontSize: 12 }} />
+                    <Tooltip
+                      formatter={(val) => formatearDinero(val)}
+                      contentStyle={{
+                        backgroundColor: "#151c2c",
+                        borderColor: "rgba(0,195,255,0.3)",
+                        color: "#fff",
+                        borderRadius: "10px",
+                      }}
+                    />
+                    <Legend wrapperStyle={{ paddingTop: 15 }} />
+                    <Bar name="Monto Acumulado ($)" dataKey="montoTotal" fill="#00c3ff" radius={[6, 6, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </ChartBox>
+
+              <ChartBox>
+                <h3>Evolución Histórica de Ingresos</h3>
+                <ResponsiveContainer width="100%" height={340}>
+                  <LineChart data={dataLineas} margin={{ top: 10, right: 10, left: 10, bottom: 10 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255, 255, 255, 0.08)" />
+                    <XAxis dataKey="fecha" stroke="#94a3b8" tick={{ fontSize: 11 }} />
+                    <YAxis stroke="#94a3b8" tick={{ fontSize: 12 }} />
+                    <Tooltip
+                      formatter={(val) => formatearDinero(val)}
+                      contentStyle={{
+                        backgroundColor: "#151c2c",
+                        borderColor: "rgba(16,185,129,0.3)",
+                        color: "#fff",
+                        borderRadius: "10px",
+                      }}
+                    />
+                    <Legend />
+                    <Line
+                      name="Evolución ($)"
+                      type="monotone"
+                      dataKey="monto"
+                      stroke="#10b981"
+                      strokeWidth={3}
+                      dot={{ r: 4, fill: "#10b981" }}
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              </ChartBox>
+            </GridCharts>
+          </>
         )}
       </DashboardContainer>
     </MenuTemplate>
   );
 }
 
+// 🎨 STYLED COMPONENTS MODERN DASHBOARD
 const DashboardContainer = styled.div`
-  padding: 30px;
-  color: white;
-  .subtitle { color: #888; margin-bottom: 30px; font-size: 14px; }
-  .loading-box { color: #888; text-align: center; padding: 50px; font-size: 16px; }
-  .grid-charts { display: grid; grid-template-columns: repeat(auto-fit, minmax(450px, 1fr)); gap: 25px; }
-  .chart-box {
-    background: #1a1a1a;
-    padding: 25px;
-    border-radius: 8px;
-    box-shadow: 0 4px 15px rgba(0,0,0,0.4);
-    h3 { margin-bottom: 20px; font-size: 15px; color: #e0e0e0; border-left: 4px solid #00a8ff; padding-left: 10px; }
+  animation: fadeIn 0.3s ease-out;
+`;
+
+const HeaderSection = styled.div`
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 24px;
+  flex-wrap: wrap;
+  gap: 16px;
+
+  h2 {
+    font-size: 24px;
+    font-weight: 700;
+    color: #ffffff;
+    margin-bottom: 4px;
+  }
+
+  .subtitle {
+    color: #94a3b8;
+    font-size: 14px;
+  }
+`;
+
+const FilterControl = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(21, 28, 45, 0.8);
+  border: 1px solid rgba(0, 195, 255, 0.3);
+  padding: 8px 14px;
+  border-radius: 12px;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+
+  .calendar-icon {
+    color: #00c3ff;
+    font-size: 18px;
+  }
+
+  select {
+    background: none;
+    border: none;
+    color: #ffffff;
+    font-size: 14px;
+    font-weight: 600;
+    outline: none;
+    cursor: pointer;
+
+    option {
+      background: #151c2c;
+      color: #ffffff;
+    }
+  }
+`;
+
+const LoadingBox = styled.div`
+  color: #94a3b8;
+  text-align: center;
+  padding: 60px;
+  background: rgba(21, 28, 45, 0.5);
+  border-radius: 16px;
+  border: 1px dashed rgba(255, 255, 255, 0.1);
+`;
+
+const MetricsGrid = styled.div`
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 16px;
+  margin-bottom: 24px;
+`;
+
+const MetricCard = styled.div`
+  background: rgba(21, 28, 45, 0.7);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 20px;
+  border-radius: 16px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+  transition: transform 0.2s ease, border-color 0.2s ease;
+
+  &:hover {
+    transform: translateY(-2px);
+    border-color: rgba(0, 195, 255, 0.3);
+  }
+
+  .icon-badge {
+    width: 48px;
+    height: 48px;
+    border-radius: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 24px;
+
+    &.blue {
+      background: rgba(0, 195, 255, 0.15);
+      color: #00c3ff;
+      border: 1px solid rgba(0, 195, 255, 0.3);
+    }
+
+    &.green {
+      background: rgba(16, 185, 129, 0.15);
+      color: #10b981;
+      border: 1px solid rgba(16, 185, 129, 0.3);
+    }
+
+    &.purple {
+      background: rgba(168, 85, 247, 0.15);
+      color: #a855f7;
+      border: 1px solid rgba(168, 85, 247, 0.3);
+    }
+  }
+
+  .info {
+    display: flex;
+    flex-direction: column;
+
+    .label {
+      font-size: 13px;
+      color: #94a3b8;
+      font-weight: 500;
+    }
+
+    .value {
+      font-size: 22px;
+      font-weight: 700;
+      color: #ffffff;
+      margin: 2px 0 0 0;
+    }
+  }
+`;
+
+const GridCharts = styled.div`
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+  gap: 24px;
+
+  @media (max-width: 500px) {
+    grid-template-columns: 1fr;
+  }
+`;
+
+const ChartBox = styled.div`
+  background: rgba(21, 28, 45, 0.7);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 24px;
+  border-radius: 16px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+
+  h3 {
+    margin-bottom: 20px;
+    font-size: 16px;
+    font-weight: 600;
+    color: #f8fafc;
+    border-left: 4px solid #00c3ff;
+    padding-left: 12px;
   }
 `;
