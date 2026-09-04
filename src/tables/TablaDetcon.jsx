@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 import { supabase } from "../supabase/supabase.config";
+import { jsPDF } from "jspdf";
+import autoTable from "jspdf-autotable";
 import styled from "styled-components";
 
 export function TablaDetcon({ refresh }) {
@@ -25,7 +27,90 @@ export function TablaDetcon({ refresh }) {
     consultarVentasHoy();
   }, [refresh]);
 
+   const generarReporteDiarioPDF = () => {
+    try {
+      if (!datos || datos.length === 0) {
+        return alert("No hay ventas registradas el día de hoy para generar el reporte.");
+      }
+
+      // Inicializamos jsPDF
+      const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+      const fechaActual = new Date().toLocaleDateString();
+
+      // 1. Encabezado del documento
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(16);
+      doc.text("POZO TRINA MALAVER F.P.", 14, 15);
+      
+      doc.setFontSize(11);
+      doc.setFont("helvetica", "normal");
+      doc.text(`Cierre de Ventas Diario - Fecha: ${fechaActual}`, 14, 22);
+
+      // 2. Calcular la suma total acumulada del día
+      const totalDelDia = datos.reduce((sum, item) => sum + Number(item.monto || 0), 0);
+      
+      doc.setFont("helvetica", "bold");
+      doc.text(`Total Recaudado: $${totalDelDia}`, 14, 29);
+      doc.text("------------------------------------------------------------------------------------------", 14, 34);
+
+      // 3. Organizar las filas de forma ultra-segura
+      const tablaFilas = datos.map((item) => {
+        let horaFormateada = "N/A";
+        if (item.fecha_carga) {
+          const f = new Date(item.fecha_carga);
+          if (!isNaN(f.getTime())) {
+            horaFormateada = f.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+          }
+        }
+        return [
+          item.camiones?.placa || "N/A", 
+          `$${item.monto || 0}`,
+          item.metodo || "N/A",
+          horaFormateada
+        ];
+      });
+
+      // 4. Crear la tabla automatizada (Formato corregido para jspdf-autotable)
+      autoTable(doc, {
+        startY: 38,
+        head: [["PLACA", "MONTO", "MÉTODO", "HORA"]],
+        body: tablaFilas,
+        theme: "striped",
+        headStyles: { fillColor: "#1e293b", textColor: "#ffffff", fontStyle: "bold" },
+        styles: { font: "helvetica", fontSize: 10, halign: "center" },
+      });
+
+      // 5. Descargar archivo
+      doc.save(`Reporte_Diario_${fechaActual.replace(/\//g, "-")}.pdf`);
+
+    } catch (error) {
+      // Si algo falla, esta alerta saltará en tu pantalla diciéndonos el porqué
+      alert("Error interno al crear el PDF: " + error.message);
+    }
+  };
+
+
   return (
+    <>
+      <button
+        onClick={generarReporteDiarioPDF}
+        style={{
+          backgroundColor: "#059669", // Verde esmeralda corporativo
+          color: "white",
+          fontWeight: "500",
+          padding: "10px 18px",
+          borderRadius: "6px",
+          border: "none",
+          cursor: "pointer",
+          marginBottom: "16px",
+          fontSize: "14px",
+          display: "flex",
+          alignItems: "center",
+          gap: "8px"
+        }}
+      >
+        📊 Descargar Cierre Diario (PDF)
+      </button>
     <TableContainer>
       <table>
         <thead>
@@ -52,6 +137,7 @@ export function TablaDetcon({ refresh }) {
         </tbody>
       </table>
     </TableContainer>
+    </>
   );
 }
 

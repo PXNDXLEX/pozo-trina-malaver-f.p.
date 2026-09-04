@@ -13,6 +13,7 @@ export function FormularioVentas({ OnVentaRealizada }) {
   const [camionSeleccionadoId, setCamionSeleccionadoId] = useState("");
   const [monto, setMonto] = useState("");
   const [metodo, setMetodo] = useState("Efectivo");
+  const [foto, setFoto] = useState(null);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -44,8 +45,8 @@ export function FormularioVentas({ OnVentaRealizada }) {
   };
 
   // Generador de comprobante PDF optimizado tipo Ticket
-  const generarComprobantePDF = (camion, montoPago, metodoPago, fecha) => {
-    const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: [80, 150] });
+  const generarComprobantePDF = async (camion, montoPago, metodoPago, fecha, fotoUrl) => {
+    const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: [80, 220] });
 
     doc.setFont("helvetica", "bold");
     doc.setFontSize(12);
@@ -85,11 +86,38 @@ export function FormularioVentas({ OnVentaRealizada }) {
     doc.text("TOTAL PAGADO:", 8, 70);
     doc.text(`$${montoPago}`, 72, 70, { align: "right" });
 
+    
     doc.setTextColor(100, 100, 100);
     doc.setFont("helvetica", "italic");
     doc.setFontSize(8);
     doc.text("¡Gracias por su pago! Recarga autorizada.", 40, 85, { align: "center" });
 
+     if (fotoUrl) {
+      try {
+        doc.setFont("helvetica", "bold");
+        doc.text("Registro Fotográfico:", 5, 92);
+
+        const base64Data = await new Promise((resolve, reject) => {
+          const img = new Image();
+          img.crossOrigin = "anonymous"; 
+          img.onload = () => {
+            const canvas = document.createElement("canvas");
+            canvas.width = img.width;
+            canvas.height = img.height;
+            const ctx = canvas.getContext("2d");
+            ctx.drawImage(img, 0, 0);
+            resolve(canvas.toDataURL("image/png")); // Formato PNG universal
+          };
+          img.onerror = () => reject(new Error("Error al procesar imagen"));
+          img.src = fotoUrl;
+        });
+         // Dibujamos la foto al fondo (X: 10, Y: 98, Ancho: 60, Alto: 45)
+        doc.addImage(base64Data, "PNG", 10, 98, 60, 45);
+        
+      } catch (imgError) {
+        console.error("No se pudo agregar la foto al final del PDF:", imgError);
+      }
+    }
     doc.save(`Ticket_Recarga_${camion?.placa || "unidad"}.pdf`);
   };
 
@@ -102,22 +130,45 @@ export function FormularioVentas({ OnVentaRealizada }) {
     const fechaActual = new Date();
 
     try {
+      let fotoUrl = null;
+       if (foto && foto.length > 0) {
+        const archivoIndividual = foto[0]; // EXTRAE EL ARCHIVO REAL (Posición 0 del arreglo)
+        const nombreArchivo = `${Date.now()}-${archivoIndividual.name}`;
+
+        const { data: storageData, error: storageError } = await supabase.storage
+          .from('fotos-camiones')
+          .upload(nombreArchivo, archivoIndividual);
+
+        if (storageError) {
+          throw new Error("Error al subir la imagen: " + storageError.message);
+        }
+
+        // Obtenemos la URL pública real del archivo en el Storage
+        const { data: publicUrlData } = supabase.storage
+          .from('fotos-camiones')
+          .getPublicUrl(nombreArchivo);
+
+        fotoUrl = publicUrlData.publicUrl;
+      }
+      
       const { error } = await supabase.from("registros_carga").insert([
         {
           camion_id: camionSeleccionadoId,
           monto: Number(monto),
           metodo: metodo,
           fecha_carga: fechaActual.toISOString(),
+          url_foto: fotoUrl
         },
       ]);
 
       if (error) throw error;
 
-      generarComprobantePDF(camionActual, monto, metodo, fechaActual);
+      await generarComprobantePDF(camionActual, monto, metodo, fechaActual, fotoUrl);
       alert("¡Venta registrada con éxito y ticket generado!");
       
       setMonto("");
       setCamionSeleccionadoId("");
+      setFoto(null);
 
       // Ejecuta la redirección automática a la lista del día que programamos antes
       if (typeof OnVentaRealizada === "function") {
@@ -183,6 +234,30 @@ export function FormularioVentas({ OnVentaRealizada }) {
             </select>
           </FieldBox>
         </InputGrid>
+
+              <FieldBox>
+          <label className="text-white text-sm font-medium flex items-center gap-2">
+            📷 Capturar Foto del Camión
+          </label>
+          <input 
+            type="file" 
+            accept="image/*" 
+            capture="environment" // Fuerza a abrir la cámara trasera en dispositivos móviles
+          onChange={(e) => setFoto(e.target.files)}
+            className="block w-full text-sm text-gray-400 mt-1
+              file:mr-4 file:py-2 file:px-4
+              file:rounded-md file:border-0
+              file:text-sm file:font-semibold
+              file:bg-slate-700 file:text-white
+              hover:file:bg-slate-600
+              cursor-pointer"
+          />
+          {foto && (
+            <p className="text-emerald-400 text-xs mt-1 font-medium">
+              ✓ Foto capturada y lista
+            </p>
+          )}
+        </FieldBox>
 
         <SubmitBtn type="submit" disabled={loading}>
           {loading ? "Procesando Venta..." : "Guardar Venta"}

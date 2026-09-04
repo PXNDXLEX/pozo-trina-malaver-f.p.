@@ -1,6 +1,8 @@
 import { useEffect, useState, useMemo } from "react";
 import styled from "styled-components";
 import { supabase } from "../supabase/supabase.config";
+import { jsPDF } from "jspdf";
+import autoTable from "jspdf-autotable";
 import { MdSearch, MdCalendarToday, MdLocalShipping, MdAttachMoney } from "react-icons/md";
 
 export function TablaContabilidad() {
@@ -11,12 +13,13 @@ export function TablaContabilidad() {
 
   const consultarSupabase = async (dias) => {
     setCargando(true);
-    let query = supabase
+       let query = supabase
       .from("registros_carga")
       .select(`
         monto,
         fecha_carga,
-        camiones ( chofer )
+        metodo,
+        camiones ( chofer, placa )
       `);
 
     if (dias !== 3650) {
@@ -36,6 +39,7 @@ export function TablaContabilidad() {
   useEffect(() => {
     consultarSupabase(filtroDias);
   }, [filtroDias]);
+
 
   const resumenProcesado = useMemo(() => {
     const agrupado = datosBase.reduce((acc, item) => {
@@ -70,6 +74,74 @@ export function TablaContabilidad() {
   const formatearDinero = (val) => {
     return "$" + Number(val).toLocaleString("es-ES", { minimumFractionDigits: 0, maximumFractionDigits: 2 });
   };
+  const generarReporteContableDetalladoPDF = () => {
+    if (!datosBase || datosBase.length === 0) {
+      return alert("No hay registros en el período seleccionado para generar el reporte.");
+    }
+
+    const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+    const fechaActual = new Date().toLocaleDateString();
+
+    // 1. Determinar el título del período según los días seleccionados
+    let textoPeriodo = "Histórico General";
+    if (filtroDias === 1) textoPeriodo = "Reporte Diario (Hoy)";
+    else if (filtroDias === 7) textoPeriodo = "Reporte Semanal (Últimos 7 días)";
+    else if (filtroDias === 15) textoPeriodo = "Reporte Quincenal (Últimos 15 días)";
+    else if (filtroDias === 30) textoPeriodo = "Reporte Mensual (Últimos 30 días)";
+
+    // 2. Encabezado del PDF
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(16);
+    doc.text("POZO TRINA MALAVER F.P.", 14, 15);
+    
+    doc.setFontSize(12);
+    doc.text(`Informe Detallado de Ventas - ${textoPeriodo}`, 14, 22);
+    
+    doc.setFontSize(9);
+    doc.setFont("helvetica", "normal");
+    doc.text(`Fecha de emisión: ${fechaActual}`, 14, 28);
+
+    // Calcular el monto total acumulado del período seleccionado
+    const totalPeriodo = datosBase.reduce((sum, item) => sum + Number(item.monto || 0), 0);
+    
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(11);
+    doc.text(`Total Recaudado en el Período: $${totalPeriodo}`, 14, 35);
+    doc.text("------------------------------------------------------------------------------------------", 14, 40);
+
+    // 3. Mapear cada viaje de forma detallada e individual para la tabla
+    const tablaFilas = datosBase.map((item) => {
+      // Formateamos la fecha y hora de forma legible (DD/MM/AAAA HH:MM)
+      let fechaFormateada = "N/A";
+      if (item.fecha_carga) {
+        const f = new Date(item.fecha_carga);
+        if (!isNaN(f.getTime())) {
+          fechaFormateada = `${f.toLocaleDateString()} ${f.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+        }
+      }
+
+      return [
+        fechaFormateada,
+        item.camiones?.chofer || "N/A",
+        item.camiones?.placa || "N/A",
+        item.metodo || "N/A",
+        `$${item.monto || 0}`
+      ];
+    });
+
+    // 4. Crear la tabla detallada automatizada con todas las columnas centradas
+    autoTable(doc, {
+      startY: 44,
+      head: [["FECHA Y HORA", "CHOFER", "PLACA", "MÉTODO", "MONTO ($)"]],
+      body: tablaFilas,
+      theme: "striped",
+      headStyles: { fillColor: "#1e293b", textColor: "#ffffff", fontStyle: "bold" }, // Azul pizarra oscuro
+      styles: { font: "helvetica", fontSize: 9, halign: "center" }
+    });
+
+    // 5. Descargar archivo
+    doc.save(`Reporte_Detallado_${textoPeriodo.replace(/ /g, "_")}.pdf`);
+  };
 
   return (
     <SeccionContabilidad>
@@ -99,6 +171,28 @@ export function TablaContabilidad() {
             <option value={3650}>Todo el Histórico</option>
           </SelectTiempo>
         </SelectWrapper>
+
+                {/* BOTÓN PARA DESCARGAR EL REPORTE DETALLADO SEGÚN EL FILTRO SELECCIONADO */}
+        <button
+          onClick={generarReporteContableDetalladoPDF}
+          type="button"
+          style={{
+            backgroundColor: "#059669", // Verde esmeralda corporativo
+            color: "white",
+            fontWeight: "500",
+            padding: "8px 16px",
+            borderRadius: "6px",
+            border: "none",
+            cursor: "pointer",
+            fontSize: "14px",
+            display: "flex",
+            alignItems: "center",
+            height: "38px" // Alineado a la altura del buscador y selector
+          }}
+        >
+          📊 Descargar Informe PDF
+        </button>
+
       </ControlesSuperiores>
 
       {cargando ? (
