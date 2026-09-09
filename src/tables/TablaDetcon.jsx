@@ -50,7 +50,7 @@ export function TablaDetcon({ refresh }) {
       const totalDelDia = datos.reduce((sum, item) => sum + Number(item.monto || 0), 0);
       
       doc.setFont("helvetica", "bold");
-      doc.text(`Total Recaudado: $${totalDelDia}`, 14, 29);
+      doc.text(`Total Acumulado: $${totalDelDia}`, 14, 29);
       doc.text("------------------------------------------------------------------------------------------", 14, 34);
 
       // 3. Organizar las filas de forma ultra-segura

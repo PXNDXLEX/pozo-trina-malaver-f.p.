@@ -1,5 +1,5 @@
 import styled from "styled-components";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { supabase } from "../supabase/supabase.config";
 import { MdLocalShipping, MdConfirmationNumber, MdPerson, MdWaterDrop } from "react-icons/md";
 
@@ -7,7 +7,23 @@ export function FormularioCamiones({ onCamionAgregado }) {
   const [placa, setPlaca] = useState("");
   const [chofer, setChofer] = useState("");
   const [capacidad, setCapacidad] = useState("");
+  const [modelo, setModelo] = useState("");
+  const [camioneros, setCamioneros] = useState([]);
   const [cargando, setCargando] = useState(false);
+
+   useEffect(() => {
+    const obtenerCamioneros = async () => {
+      const { data, error } = await supabase
+        .from("perfiles") 
+        .select("id, nombre, cedula") 
+        .eq("rol", "camionero"); 
+
+      if (!error && data) {
+        setCamioneros(data);
+      }
+    };
+    obtenerCamioneros();
+  }, []);
 
   const insertarCamion = async (e) => {
     e.preventDefault();
@@ -21,23 +37,35 @@ export function FormularioCamiones({ onCamionAgregado }) {
       setCargando(false);
       return;
     }
+      // ¡Agregamos esto! Busca el chofer en la lista para obtener su id único (UUID)
+    const camioneroSeleccionado = camioneros.find(
+      (c) => c.nombre.trim() === chofer.trim()
+    );
+    const perfilId = camioneroSeleccionado ? camioneroSeleccionado.id : null;
 
     try {
       const { error } = await supabase.from("camiones").insert([
         {
           placa: placaLimpia,
           chofer: chofer.trim(),
-          capacidad: parseFloat(capacidad),
+          capacidad: parseInt(capacidad, 10),
+           modelo: modelo.trim(), 
+           perfil_id: perfilId,
         },
       ]);
 
       if (error) {
+         if (error.code === "23505") {
+          alert("¡Error! Esta placa ya se encuentra registrada en el sistema.");
+        } else {
         alert("Error al guardar camión: " + error.message);
+        }
       } else {
         alert("🎉 ¡Camión registrado con éxito!");
         setPlaca("");
         setChofer("");
         setCapacidad("");
+        setModelo("");
         if (onCamionAgregado) onCamionAgregado();
       }
     } catch (err) {
@@ -77,24 +105,51 @@ export function FormularioCamiones({ onCamionAgregado }) {
 
           <FieldBox>
             <label><MdPerson className="field-icon" /> Nombre del Chofer:</label>
-            <input
-              type="text"
-              value={chofer}
-              onChange={(e) => setChofer(e.target.value)}
-              placeholder="Nombre completo"
-              required
-            />
+              <input
+                type="text"
+                value={chofer}
+                onChange={(e) => setChofer(e.target.value)}
+                placeholder="Escribe nombre o cédula..."
+                list="lista-camioneros"
+                required
+               />
+            <datalist id="lista-camioneros">
+              {camioneros.map((c, index) => (
+              <option 
+                key={index} 
+                value={c.nombre} 
+                label={`Cédula: ${c.cedula}`}
+               />
+                 ))}
+            </datalist>
+          </FieldBox>
+         
+
+         <FieldBox>
+             <label><MdWaterDrop className="field-icon" /> Capacidad de Carga (Lts):</label>
+             <input
+             type="text"
+              value={capacidad}
+              onChange={(e) => {
+             const valor = e.target.value;
+            if (valor === '' || /^[0-9\b]+$/.test(valor)) {
+        setCapacidad(valor);
+      }
+    }}
+          placeholder="Ej: 10000"
+          required
+          />
           </FieldBox>
 
-          <FieldBox style={{ gridColumn: "1 / -1" }}>
-            <label><MdWaterDrop className="field-icon" /> Capacidad de Carga (Lts):</label>
-            <input
-              type="number"
-              value={capacidad}
-              onChange={(e) => setCapacidad(e.target.value)}
-              placeholder="Ej: 10000"
-              required
-            />
+        <FieldBox>
+            <label><MdLocalShipping className="field-icon" /> Modelo del Camión:</label>
+              <input
+                type="text"
+                value={modelo}
+                onChange={(e) => setModelo(e.target.value)}
+                placeholder="Ej: Mack / Ford Cargo"
+                required
+                />
           </FieldBox>
         </InputGrid>
 

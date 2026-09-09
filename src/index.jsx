@@ -2,6 +2,7 @@ export {default as App} from'./App';
 export * from './templates/LoginTemplate';
 export * from './templates/MenuTemplate';
 export * from './main';
+export * from './forms/CuentasPorCobrar';
 export * from './pages/Home';
 export * from './pages/Login';
 export * from './pages/Regcamion';

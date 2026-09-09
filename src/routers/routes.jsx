@@ -1,5 +1,5 @@
 import{Routes, Route, Navigate } from "react-router-dom";
-import { Login, Regcamion, ListaCamion, Contabilidad, ListVentas, RegVentas, Gestusuarios, RegUsuario, Home} from "../index";
+import { Login, Regcamion, ListaCamion, Contabilidad, ListVentas, RegVentas, Gestusuarios, RegUsuario, CuentasPorCobrar, Home} from "../index";
 import {ProtectedRoute} from "../components/ProtectedRoute";
 export function MyRoutes(){
     return(
@@ -10,6 +10,8 @@ export function MyRoutes(){
 
       <Route element={<ProtectedRoute rolesPermitidos={["administrador", "registrador","camionero"]} />}>
         <Route path="/recarga" element={<RegVentas />} />
+          <Route path="/cuentas-por-cobrar" element={<CuentasPorCobrar />} />
+
       </Route>
 
       {/* 🔐 PANTALLAS COMPARTIDAS: Ambos roles pueden ingresar aquí */}
@@ -18,6 +20,10 @@ export function MyRoutes(){
         
       </Route>
 
+       <Route element={<ProtectedRoute rolesPermitidos={["administrador","camionero"]} />}>
+            <Route path="/cuentas-por-cobrar" element={<CuentasPorCobrar />} />
+
+      </Route>
       {/* 👑 PANTALLAS EXCLUSIVAS: Solo el Administrador puede ingresar */}
       <Route element={<ProtectedRoute rolesPermitidos={["administrador"]} />}>
        <Route path="/home" element={<Home />} />
@@ -26,6 +32,8 @@ export function MyRoutes(){
         <Route path="/detalle-recarga" element={<ListVentas />} />
         <Route path="/gestusuarios" element={<Gestusuarios />} />
           <Route path="/usuario" element={<RegUsuario />} />
+          <Route path="/cuentas-por-cobrar" element={<CuentasPorCobrar />} />
+
       </Route>
 
       {/* Redirección por defecto */}

@@ -12,6 +12,7 @@ import {
   MdLogout,
   MdKeyboardArrowDown,
   MdAddCircleOutline,
+  MdReceipt,
   MdFormatListBulleted,
   MdPersonAdd,
   MdManageAccounts,
@@ -194,7 +195,11 @@ export function MenuTemplate({ children }) {
               </DropdownMenu>
             )}
           </DropdownContainer>
-
+           {user?.role !== "registrador" && (
+          <NavLink to="/cuentas-por-cobrar"  className={location.pathname === "/cuentas-por-cobrar" ? "active" : ""}>
+           <MdReceipt className="icon" /> Cuentas por Cobrar
+        </NavLink>
+           )}
           {user?.role === "administrador" && (
             <NavLink to="/contabilidad" className={location.pathname === "/contabilidad" ? "active" : ""}>
               <MdAssessment className="nav-icon" /> Contabilidad
@@ -287,6 +292,11 @@ export function MenuTemplate({ children }) {
           <span>Recargas</span>
         </NavButtonMobile>
 
+          {user?.role !== "registrador" && (
+          <NavItemMobile to="/cuentas-por-cobrar"  className={location.pathname === "/cuentas-por-cobrar" ? "active" : ""}>
+           <MdReceipt/> <span> Deudas </span>
+        </NavItemMobile>
+           )}
         {user?.role === "administrador" && (
           <NavItemMobile to="/contabilidad" className={location.pathname === "/contabilidad" ? "active" : ""}>
             <MdAssessment />
