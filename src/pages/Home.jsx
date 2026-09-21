@@ -33,6 +33,7 @@ export function Home() {
         .select(`
           monto,
           fecha_carga,
+           estatus,
           camiones ( chofer, placa )
         `)
         .order("fecha_carga", { ascending: true });
@@ -56,34 +57,51 @@ export function Home() {
   };
 
   // Procesar datos para gráficos y métricas
+   // Procesar datos para gráficos y métricas
   const { dataBarras, dataLineas, metricas } = useMemo(() => {
     const acumuladorCamiones = {};
     const acumuladorFechas = {};
-    let acumuladoGeneral = 0;
+    let acumuladoIngresosReales = 0;
+    let acumuladoCuentasPorCobrar = 0;
+    let cargasTotalesValidas = 0;
 
     dataRaw.forEach((item) => {
-      const nombreCamion = item.camiones
-        ? `${item.camiones.chofer.trim()} (${item.camiones.placa.trim()})`
-        : "Desconocido";
-
+      // Evaluar estados de pago
+      const esPagado = item.estatus === "pagado";
       const montoNumerico = Number(item.monto) || 0;
-      acumuladoGeneral += montoNumerico;
+      
+      // Contabilizamos el total físico operativo
+      cargasTotalesValidas++;
 
-      if (acumuladorCamiones[nombreCamion]) {
-        acumuladorCamiones[nombreCamion] += montoNumerico;
+      if (esPagado) {
+        // 📌 1. Afecta los ingresos en caja
+        acumuladoIngresosReales += montoNumerico;
+
+        // 📌 2. Acumular para Gráfico de Barras (Ingresos por Chofer/Camión)
+        const nombreCamion = item.camiones
+          ? `${item.camiones.chofer.trim()} (${item.camiones.placa.trim()})`
+          : "Desconocido";
+
+        if (acumuladorCamiones[nombreCamion]) {
+          acumuladorCamiones[nombreCamion] += montoNumerico;
+        } else {
+          acumuladorCamiones[nombreCamion] = montoNumerico;
+        }
+
+        // 📌 3. Acumular para Gráfico de Líneas (Evolución de Caja)
+        const fechaLimpia = item.fecha_carga ? item.fecha_carga.substring(0, 10) : "sin fecha";
+        if (acumuladorFechas[fechaLimpia]) {
+          acumuladorFechas[fechaLimpia] += montoNumerico;
+        } else {
+          acumuladorFechas[fechaLimpia] = montoNumerico;
+        }
       } else {
-        acumuladorCamiones[nombreCamion] = montoNumerico;
-      }
-
-      const fechaLimpia = item.fecha_carga ? item.fecha_carga.substring(0, 10) : "Sin fecha";
-
-      if (acumuladorFechas[fechaLimpia]) {
-        acumuladorFechas[fechaLimpia] += montoNumerico;
-      } else {
-        acumuladorFechas[fechaLimpia] = montoNumerico;
+        // 📌 4. Si no está pagado, se acumula como dinero en la calle
+        acumuladoCuentasPorCobrar += montoNumerico;
       }
     });
 
+    // Mapeo estructurado para Recharts
     const formatoBarras = Object.keys(acumuladorCamiones).map((key) => ({
       camionIdentificador: key,
       montoTotal: acumuladorCamiones[key],
@@ -98,12 +116,14 @@ export function Home() {
       dataBarras: formatoBarras,
       dataLineas: formatoLineas,
       metricas: {
-        totalIngresos: acumuladoGeneral,
-        totalCargas: dataRaw.length,
-        promedio: dataRaw.length > 0 ? (acumuladoGeneral / dataRaw.length).toFixed(2) : "0.00",
+        totalIngresos: acumuladoIngresosReales,       // Caja Real
+        totalDeudas: acumuladoCuentasPorCobrar,       // Cuentas por cobrar
+        totalCargas: cargasTotalesValidas,            // Conteo operativo de camiones
+        promedio: cargasTotalesValidas > 0 ? (acumuladoIngresosReales / cargasTotalesValidas).toFixed(2) : "0.00",
       },
     };
   }, [dataRaw]);
+
 
   // Formateador de moneda en español ($ X.XXX)
   const formatearDinero = (val) => {

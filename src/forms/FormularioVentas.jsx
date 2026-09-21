@@ -19,6 +19,8 @@ export function FormularioVentas({ OnVentaRealizada }) {
   // El nuevo Carrito de viajes acumulados (Cola de despachos)
   const [carritoCargas, setCarritoCargas] = useState([]);
   const [metodo, setMetodo] = useState("Efectivo");
+  const [referencia, setReferencia] = useState("");
+  const [mostrandoMetodos, setMostrandoMetodos] = useState(false);
   const [loading, setLoading] = useState(false);
   useEffect(() => {
     buscarCamionesAsignados();
@@ -95,7 +97,7 @@ export function FormularioVentas({ OnVentaRealizada }) {
     if (fileInput) fileInput.value = "";
   };
   // Generador de comprobante PDF optimizado tipo Ticket (Adaptado para lotes)
-  const generarComprobantePDF = async (camion, montoPago, metodoPago, fecha, fotoUrl) => {
+  const generarComprobantePDF = async (camion, montoPago, metodoPago, referenciaPago, fecha, fotoUrl) => {
     const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: [80, 150] });
 
     doc.setFont("helvetica", "bold");
@@ -127,48 +129,62 @@ export function FormularioVentas({ OnVentaRealizada }) {
     doc.setFont("helvetica", "normal");
     doc.text(`${metodoPago}`, 33, 55);
 
-    doc.setFillColor(240, 240, 240);
-    doc.rect(4, 62, 72, 12, "F");
+    let desplazamientoY = 0;
 
+  if (metodoPago !== "Efectivo") {
+    desplazamientoY = 6; // Baja todo 6 milímetros
     doc.setFont("helvetica", "bold");
-    doc.setFontSize(11);
-    doc.setTextColor(0, 0, 0);
-    doc.text("TOTAL A PAGAR:", 8, 70);
-    doc.text(`$${montoPago}`, 72, 70, { align: "right" });
+    doc.text("Referencia:", 5, 55 + desplazamientoY);
+    doc.setFont("helvetica", "normal");
+    doc.text(`${referenciaPago || "-"}`, 25, 55 + desplazamientoY); 
+  }
 
-    doc.setTextColor(100, 100, 100);
-    doc.setFont("helvetica", "italic");
-    doc.setFontSize(8);
-    doc.text("Recarga autorizada.", 40, 85, { align: "center" });
+  // 3. 📌 COORDENADAS DINÁMICAS: Sumamos 'desplazamientoY' a las Y originales
+  doc.setFillColor(240, 240, 240);
+  doc.rect(4, 62 + desplazamientoY, 72, 12, "F");
+
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(11);
+  doc.setTextColor(0, 0, 0);
+  doc.text("TOTAL A PAGAR:", 8, 70 + desplazamientoY);
+  doc.text(`$${montoPago}`, 72, 70 + desplazamientoY, { align: "right" });
+        
+   
 
     if (fotoUrl) {
-      try {
-        const base64Data = await new Promise((resolve, reject) => {
-          const img = new Image();
-          img.crossOrigin = "anonymous";
-          img.onload = () => {
-            const canvas = document.createElement("canvas");
-            canvas.width = img.width;
-            canvas.height = img.height;
-            const ctx = canvas.getContext("2d");
-            ctx.drawImage(img, 0, 0);
-            resolve(canvas.toDataURL("image/png"));
-          };
-          img.onerror = () => reject(new Error("Error al procesar imagen"));
-          img.src = fotoUrl;
-        });
+    try {
+      const base64Data = await new Promise((resolve, reject) => {
+        const img = new Image();
+        img.crossOrigin = "anonymous";
+        img.onload = () => {
+          const canvas = document.createElement("canvas");
+          canvas.width = img.width;
+          canvas.height = img.height;
+          const ctx = canvas.getContext("2d");
+          ctx.drawImage(img, 0, 0);
+          resolve(canvas.toDataURL("image/png"));
+        };
+        img.onerror = () => reject(new Error("Error al procesar imagen"));
+        img.src = fotoUrl;
+      });
 
-        doc.addImage(base64Data, "PNG", 10, 90, 60, 45);
-      } catch (imgError) {
-        console.error("No se pudo agregar la foto al final del PDF:", imgError);
-      }
+      // Se desplaza la foto también
+      doc.addImage(base64Data, "PNG", 10, 90 + desplazamientoY, 60, 45);
+    } catch (imgError) {
+      console.error("No se pudo agregar la foto al final del PDF:", imgError);
     }
+  }
 
-    doc.save(`Ticket_Recarga_${camion?.placa || "unidad"}.pdf`);
-  };
+  doc.save(`Ticket_Recarga_${camion?.placa || "unidad"}.pdf`);
+};
   // PROCESAR GUARDADO (Maneja el lote completo para ambos flujos)
-  const procesarLoteCargas = async (tipoEstatus, metodoLote, pagoIdValor) => {
+  const procesarLoteCargas = async (esDeuda = false, pagoIdValor = null) => {
     if (carritoCargas.length === 0) return;
+
+   if (!esDeuda && metodo !== "Efectivo" && !referencia.trim()) {
+    alert("Por favor, ingrese el número de referencia de la transacción bancaria.");
+    return;
+  }
     setLoading(true);
 
     try {
@@ -193,37 +209,39 @@ export function FormularioVentas({ OnVentaRealizada }) {
           fotoUrl = publicUrlData.publicUrl;
         }
 
+      const estatusFinal = esDeuda ? "pendiente" : "pagado";
+      const metodoFinal = esDeuda ? "Deuda" : metodo;
+      const referenciaFinal = esDeuda ? null : (metodo !== "Efectivo" ? referencia.trim() : null);
+
         // Insertar registro estructurado en la tabla registros_carga
         const { error: insertError } = await supabase.from("registros_carga").insert([
           {
             camion_id: viaje.camion_id,
             monto: Number(viaje.monto),
-            metodo: metodoLote,
+            metodo: metodoFinal, 
+            referencia: referenciaFinal,
             fecha_carga: fechaActual.toISOString(),
             url_foto: fotoUrl,
-            estatus: tipoEstatus, // Guarda 'pendiente' (deuda) o 'pagado'
-            pago_id: pagoIdValor  // null si es deuda, o el UUID si se paga en grupo
+            estatus: estatusFinal, // Guarda 'pendiente' (deuda) o 'pagado'
+            pago_id: esDeuda ? null : pagoIdValor  // null si es deuda, o el UUID si se paga en grupo
           }
         ]);
 
         if (insertError) throw insertError;
 
         // Generar ticket individual por cada viaje del lote de forma secuencial
-        await generarComprobantePDF(viaje.camionData, viaje.monto, metodoLote, fechaActual, fotoUrl);
+        await generarComprobantePDF(viaje.camionData, viaje.monto, metodoFinal, referenciaFinal, fechaActual, fotoUrl);
       }
 
-      alert(tipoEstatus === "pendiente" ? "¡Viajes guardados con éxito como Deudas!" : "¡Venta de lote registrada con éxito y tickets generados!");
-      setCarritoCargas([]);
-
-      if (typeof OnVentaRealizada === "function") {
-        OnVentaRealizada();
-      }
-    } catch (error) {
-      alert(`Error al procesar el lote: ${error.message}`);
-    } finally {
-      setLoading(false);
-    }
-  };
+        alert(esDeuda ? "¡Viajes guardados con éxito como Deudas!" : "¡Venta de lote registrada con éxito y tickets generados!");
+       setCarritoCargas([]);
+    setReferencia(""); 
+  } catch (error) {
+    alert(`Error al procesar el lote: ${error.message}`);
+  } finally {
+    setLoading(false);
+  }
+};
     return (
     <FormContainer>
       <HeaderGroup>
@@ -319,10 +337,19 @@ export function FormularioVentas({ OnVentaRealizada }) {
           </div>
 
           <div style={{ borderTop: "1px solid #334155", paddingTop: "15px" }}>
-            <InputGrid>
+                   <InputGrid>
+          {/* 📌 FLUJO DE SELECCIÓN DE PAGO: Solo aparece si mostrandoMetodos es true */}
+          {mostrandoMetodos && (
+            <>
               <FieldBox>
                 <label><MdPayments className="field-icon" /> Método de Pago del Lote:</label>
-                <select value={metodo} onChange={(e) => setMetodo(e.target.value)}>
+                <select 
+                  value={metodo} 
+                  onChange={(e) => {
+                    setMetodo(e.target.value);
+                    if (e.target.value === "Efectivo") setReferencia("");
+                  }}
+                >
                   <option value="Efectivo">Efectivo</option>
                   <option value="Transferencia">Transferencia</option>
                   <option value="Pago Móvil">Pago Móvil</option>
@@ -330,25 +357,87 @@ export function FormularioVentas({ OnVentaRealizada }) {
                 </select>
               </FieldBox>
 
-              <FieldBox style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: "12px" }}>
-                <button 
-                  type="button" 
-                  disabled={loading} 
-                  onClick={() => procesarLoteCargas("pendiente", "Deuda", null)} 
+              {metodo !== "Efectivo" && (
+                <FieldBox>
+                  <label style={{ color: "#fff", display: "block", marginBottom: "5px" }}>
+                    Número de Referencia:
+                  </label>
+                  <input
+                    type="text"
+                    value={referencia}
+                    onChange={(e) => setReferencia(e.target.value)}
+                    placeholder="Ej: 00123456"
+                    required
+                    style={{
+                      width: "100%",
+                      padding: "10px",
+                      background: "#0d1626",
+                      color: "#fff",
+                      border: "1px solid #334155",
+                      borderRadius: "6px"
+                    }}
+                  />
+                </FieldBox>
+              )}
+            </>
+          )}
+
+          {/* 📌 CONTENEDOR DE BOTONES DINÁMICOS */}
+          <FieldBox style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: "12px", width: "100%" }}>
+            
+            {/* 🔀 ESCENARIO A: Vista Inicial (No se han desplegado los métodos) */}
+            {!mostrandoMetodos && (
+              <>
+                <button
+                  type="button"
+                  disabled={loading}
+                  onClick={() => procesarLoteCargas(true, null)}
                   style={{ width: "48%", padding: "12px", background: "#ea580c", color: "#fff", border: "none", borderRadius: "6px", fontWeight: "bold", cursor: "pointer" }}
                 >
                   ⏳ Guardar como Deuda
                 </button>
-                <button 
-                  type="button" 
-                  disabled={loading} 
-                  onClick={() => procesarLoteCargas("pagado", metodo, crypto.randomUUID())} 
+
+                <button
+                  type="button"
+                  disabled={loading}
+                  onClick={() => setMostrandoMetodos(true)}
                   style={{ width: "48%", padding: "12px", background: "#2563eb", color: "#fff", border: "none", borderRadius: "6px", fontWeight: "bold", cursor: "pointer" }}
                 >
-                  {loading ? "Procesando..." : `🚀 Pagar Lote ($${carritoCargas.reduce((sum, v) => sum + v.monto, 0).toFixed(2)})`}
+                  💸 Pagar Lote (\${carritoCargas.reduce((sum, v) => sum + v.monto, 0).toFixed(2)})
                 </button>
-              </FieldBox>
-            </InputGrid>
+              </>
+            )}
+
+            {/* 🔀 ESCENARIO B: Flujo de Pago Abierto (Se oculta la deuda, aparece Volver y Confirmar) */}
+            {mostrandoMetodos && (
+              <>
+                <button
+                  type="button"
+                  disabled={loading}
+                  onClick={() => {
+                    setMostrandoMetodos(false);
+                    setMetodo("Efectivo");
+                    setReferencia("");
+                  }}
+                  style={{ width: "30%", padding: "12px", background: "#475569", color: "#fff", border: "none", borderRadius: "6px", fontWeight: "bold", cursor: "pointer" }}
+                >
+                  Volver
+                </button>
+
+                <button
+                  type="button"
+                  disabled={loading}
+                  onClick={() => procesarLoteCargas(false, null)}
+                  style={{ width: "66%", padding: "12px", background: "#10b981", color: "#fff", border: "none", borderRadius: "6px", fontWeight: "bold", cursor: "pointer" }}
+                >
+                  {loading ? "Procesando..." : `Confirmar Pago ($${carritoCargas.reduce((sum, v) => sum + v.monto, 0).toFixed(2)})`}
+                </button>
+              </>
+            )}
+
+          </FieldBox>
+        </InputGrid>
+
           </div>
         </div>
       )}

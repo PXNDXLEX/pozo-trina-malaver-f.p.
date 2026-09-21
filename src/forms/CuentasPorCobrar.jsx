@@ -11,97 +11,88 @@ export function CuentasPorCobrar() {
   const [deudas, setDeudas] = useState([]);
   const [deudasSeleccionadas, setDeudasSeleccionadas] = useState([]);
   const [metodoPago, setMetodoPago] = useState("Transferencia");
+  const [referencia, setReferencia] = useState("");
   const [loading, setLoading] = useState(false);
 
-      const cargarDeudasPendientes = async () => {
-    if (!user || !user.id) return;
+     const cargarDeudasPendientes = async () => {
+  setLoading(true);
+  try {
+    let queryBuilder = supabase
+      .from("registros_carga")
+      .select(`
+        id,
+        monto,
+        fecha_carga,
+        url_foto,
+        estatus,
+        metodo,
+        referencia,
+        camiones!inner ( placa, chofer, perfil_id )
+      `); // 📌 NOTA: Agregamos !inner para poder filtrar por los campos del camión anidado
 
-    try {
-      // Creamos la consulta base hacia registros_carga
-      let query = supabase
-        .from("registros_carga")
-        .select(`
-          id,
-          monto,
-          fecha_carga,
-          url_foto,
-          camiones (
-            placa,
-            chofer,
-            perfil_id
-          )
-        `)
-        .eq("estatus", "pendiente");
-
-      // 🔍 ¡AQUÍ ESTÁ EL TRUCO! 
-      // Si el usuario es un camionero, filtramos en la base de datos para que traiga SOLO sus deudas
-      if (user.role === "camionero") {
-        query = query.eq("camiones.perfil_id", user.id);
-      } else {
-        // Si es administrador, las ordena por fecha para gestionarlas mejor
-        query = query.order("fecha_carga", { ascending: false });
-      }
-
-      const { data, error } = await query;
-
-      if (error) throw error;
+    if (user.role === "camionero") {
       
-      // Filtrado de seguridad en el frontend por si las relaciones anidadas traen nulos
-      if (data) {
-        if (user.role === "camionero") {
-          const deudasPropias = data.filter(d => d.camiones && d.camiones.perfil_id === user.id);
-          setDeudas(deudasPropias);
-        } else {
-          setDeudas(data);
-        }
-      }
-    } catch (err) {
-      console.error("Error al cargar deudas:", err.message);
-    }
-  };
-
-
-  useEffect(() => {
-    cargarDeudasPendientes();
-  }, []);
-
-  // 2. Controlar la selección de checkboxes en la tabla
-  const handleToggleSeleccion = (id) => {
-    if (deudasSeleccionadas.includes(id)) {
-      setDeudasSeleccionadas(deudasSeleccionadas.filter((item) => item !== id));
+        queryBuilder = queryBuilder
+        .eq("estatus", "pendiente")
+        .eq("camiones.codigo_chofer", user.password || user.id); 
     } else {
-      setDeudasSeleccionadas([...deudasSeleccionadas, id]);
+      // 2. El administrador ve todo lo pendiente y por conciliar global
+      queryBuilder = queryBuilder.in("estatus", ["pendiente", "por_conciliar"]);
     }
-  };
 
-  // 3. Liquidar el lote de deudas seleccionadas con un solo pago_id
-  const handleLiquidarLote = async () => {
-    if (deudasSeleccionadas.length === 0) return;
-    setLoading(true);
+    const { data, error } = await queryBuilder.order("fecha_carga", { ascending: false });
 
-    const uuidPagoAgrupado = crypto.randomUUID(); // Identificador único de la transferencia
+    if (error) throw error;
 
-    try {
-      const { error } = await supabase
-        .from("registros_carga")
-        .update({
-          estatus: "pagado",
-          metodo: metodoPago,
-          pago_id: uuidPagoAgrupado
-        })
-        .in("id", deudasSeleccionadas); // Actualiza todas las deudas marcadas en un solo bloque
+    // 3. Ya no necesitamos la línea de .filter() que causaba el error de borrado de datos.
+    // Seteamos directamente la data que viene filtrada limpia desde Supabase.
+    setDeudas(data || []);
 
-      if (error) throw error;
+  } catch (error) {
+    console.error("Error al cargar deudas:", error.message);
+    alert("Error al cargar deudas: " + error.message);
+  } finally {
+    setLoading(false);
+  }
+};
 
-      alert("¡Deudas liquidadas con éxito! El lote ha sido conciliado.");
-      setDeudasSeleccionadas([]);
-      cargarDeudasPendientes(); // Recarga la tabla limpia
-    } catch (err) {
-      alert("Error al procesar la liquidación: " + err.message);
-    } finally {
-      setLoading(false);
-    }
-  };
+        // 📌 NUEVA FUNCIÓN: Se ejecuta cuando el camionero envía el formulario
+const handleCamioneroReportaLote = async () => {
+  if (deudas.length === 0) return;
+
+  if (metodoPago !== "Efectivo" && !referencia.trim()) {
+    alert("Por favor, ingrese el número de referencia para que el administrador valide su pago.");
+    return;
+  }
+
+  setLoading(true);
+  const uuidReporte = crypto.randomUUID();
+  
+  // Extraemos todos los IDs de las deudas del camionero en pantalla
+  const idsDeudas = deudas.map(d => d.id);
+
+  try {
+    const { error } = await supabase
+      .from("registros_carga")
+      .update({
+        estatus: "por_conciliar", // 📌 ESTATUS TEMPORAL DE REVISIÓN
+        metodo: metodoPago,
+        referencia: metodoPago !== "Efectivo" ? referencia.trim() : null,
+        pago_id: uuidReporte // Vincula las deudas a un mismo reporte temporal
+      })
+      .in("id", idsDeudas);
+
+    if (error) throw error;
+
+    alert("¡Pago reportado con éxito! Espere a que el administrador verifique la transacción.");
+    setReferencia("");
+    cargarDeudasPendientes(); // Recarga la lista (ahora saldrá vacía porque ya no están en 'pendiente')
+  } catch (error) {
+    alert("Error al reportar el pago: " + error.message);
+  } finally {
+    setLoading(false);
+  }
+};
 
   // Cálculos matemáticos en tiempo real para el panel lateral
   const totalALiquidar = deudas
@@ -144,11 +135,13 @@ export function CuentasPorCobrar() {
                     <th style={{ padding: "12px" }}>Placa</th>
                     <th style={{ padding: "12px" }}>Chofer / Camionero</th>
                     <th style={{ padding: "12px" }}>Fecha y Hora del Viaje</th>
+                    <th style={{ padding: "12px" }}>Estado</th>
                     <th style={{ padding: "12px", textAlign: "right" }}>Monto de Deuda</th>
                   </tr>
                 </thead>
                 <tbody>
                   {deudas.map((d) => (
+                    
                     <tr 
                       key={d.id} 
                       style={{ 
@@ -171,6 +164,17 @@ export function CuentasPorCobrar() {
                       <td style={{ padding: "12px", fontWeight: "700", color: "#38bdf8" }}>{d.camiones?.placa}</td>
                       <td style={{ padding: "12px", color: "#e2e8f0" }}>{d.camiones?.chofer}</td>
                       <td style={{ padding: "12px", color: "#94a3b8", fontSize: "13px" }}>{new Date(d.fecha_carga).toLocaleString()}</td>
+                      <td style={{ padding: "12px" }}>
+  {d.estatus === "por_conciliar" ? (
+    <span style={{ background: "#fbbf24", color: "#000", padding: "4px 8px", borderRadius: "4px", fontSize: "12px", fontWeight: "bold" }}>
+      🔍 Revisar {d.metodo}: Ref {d.referencia || "N/A"}
+    </span>
+  ) : (
+    <span style={{ background: "#334155", color: "#94a3b8", padding: "4px 8px", borderRadius: "4px", fontSize: "12px" }}>
+      ⚠️ Crédito Activo
+    </span>
+  )}
+</td>
                       <td style={{ padding: "12px", fontWeight: "700", color: "#f87171", textAlign: "right" }}>${d.monto.toFixed(2)}</td>
                     </tr>
                   ))}
@@ -180,27 +184,74 @@ export function CuentasPorCobrar() {
           )}
         </div>
 
-        {/* LADO DERECHO CONDICIONAL 1: VISTA INFORMATIVA DE BANCOS PARA EL CAMIONERO */}
-        {user?.role === "camionero" && deudas.length > 0 && (
-          <div style={{ background: "#111827", padding: "24px", borderRadius: "16px", border: "1px solid #1f2937", height: "fit-content" }}>
-            <h3 style={{ margin: "0 0 16px 0", borderBottom: "1px solid #334155", paddingBottom: "10px", fontSize: "16px", fontWeight: "600", color: "#f3f4f6" }}>Resumen de Deuda</h3>
-            <p style={{ fontSize: "14px", color: "#94a3b8", margin: "0 0 8px 0" }}>Total viajes pendientes: <strong style={{ color: "#fff" }}>{deudas.length}</strong></p>
-            <p style={{ fontSize: "22px", fontWeight: "700", color: "#ef4444", margin: "0 0 20px 0", display: "flex", alignItems: "center", gap: "4px" }}>
-              <MdAttachMoney />Total a Pagar: {deudas.reduce((sum, d) => sum + d.monto, 0).toFixed(2)}
-            </p>
-            
-            <div style={{ background: "#1e293b", padding: "15px", borderRadius: "8px", border: "1px solid #334155", fontSize: "13px", color: "#94a3b8", lineHeight: "1.6" }}>
-              <strong style={{ color: "#fff", display: "block", marginBottom: "6px" }}>🏦 Datos de Transferencia:</strong>
-              • Banco: <strong>Banco de Venezuela</strong><br />
-              • Cuenta: <strong>0102-XXXX-XX-XXXXXXXXXX</strong><br />
-              • RIF: <strong>J-XXXXXXXX-X</strong><br />
-              • Pago Móvil: <strong>0414-XXXXXXX</strong><br />
-              <span style={{ display: "block", marginTop: "10px", color: "#f59e0b", fontStyle: "italic" }}>
-                *Una vez hecha la transferencia, envía el capture al administrador para liquidar tu cuenta.
-              </span>
-            </div>
-          </div>
-        )}
+       {/* LADO DERECHO CONDICIONAL 1: VISTA OPERATIVA PARA EL CAMIONERO */}
+{user?.role === "camionero" && deudas.length > 0 && (
+  <div style={{ display: "flex", flexDirection: "column", gap: "15px" }}>
+    
+    {/* Resumen de Total a Pagar */}
+    <div style={{ background: "#111827", padding: "24px", borderRadius: "16px", border: "1px solid #1f2937", height: "fit-content" }}>
+      <h3 style={{ margin: "0 0 16px 0", borderBottom: "1px solid #334155", paddingBottom: "10px", fontSize: "16px", fontWeight: "600" }}>Resumen de Cuenta</h3>
+      <p style={{ fontSize: "14px", color: "#94a3b8", margin: "0 0 8px 0" }}>Total viajes pendientes: <strong style={{ color: "#fff" }}>{deudas.length}</strong></p>
+      <p style={{ fontSize: "22px", fontWeight: "700", color: "#ef4444", margin: "0 0 20px 0", display: "flex", alignItems: "center", gap: "8px" }}>
+        <MdAttachMoney />Total a Pagar: {deudas.reduce((sum, d) => sum + d.monto, 0).toFixed(2)}
+      </p>
+    </div>
+
+    {/* 📌 NUEVO: Formulario para que el Camionero reporte su pago */}
+    <div style={{ background: "#111827", padding: "24px", borderRadius: "16px", border: "1px solid #1f2937" }}>
+      <h3 style={{ margin: "0 0 16px 0", fontSize: "16px", fontWeight: "600" }}>Reportar Pago de Deuda</h3>
+      
+      <div style={{ display: "flex", flexDirection: "column", gap: "6px", marginBottom: "15px" }}>
+        <label style={{ fontSize: "13px", color: "#e2e8f0" }}>Método con el que pagaste:</label>
+        <select
+          value={metodoPago}
+          onChange={(e) => {
+            setMetodoPago(e.target.value);
+            if (e.target.value === "Efectivo") setReferencia("");
+          }}
+          style={{ width: "100%", padding: "10px 12px", borderRadius: "8px", background: "#0f172a", color: "#fff", border: "1px solid #334155" }}
+        >
+          <option value="Transferencia">Transferencia Bancaria</option>
+          <option value="Pago Móvil">Pago Móvil</option>
+          <option value="Efectivo">Efectivo en Taquilla</option>
+          <option value="Zelle">Zelle</option>
+        </select>
+      </div>
+
+      {metodoPago !== "Efectivo" && (
+        <div style={{ display: "flex", flexDirection: "column", gap: "6px", marginBottom: "15px" }}>
+          <label style={{ fontSize: "13px", color: "#e2e8f0" }}>Número de Referencia:</label>
+          <input
+            type="text"
+            value={referencia}
+            onChange={(e) => setReferencia(e.target.value)}
+            placeholder="Ej: 00123456"
+            required
+            style={{ width: "100%", padding: "10px 12px", borderRadius: "8px", background: "#0f172a", color: "#fff", border: "1px solid #334155", boxSizing: "border-box" }}
+          />
+        </div>
+      )}
+
+      <button
+        type="button"
+        disabled={loading}
+        onClick={() => handleCamioneroReportaLote()} // Crearemos esta función en el paso 2
+        style={{ width: "100%", padding: "12px", background: "#2563eb", color: "#fff", border: "none", borderRadius: "8px", fontWeight: "bold", cursor: "pointer" }}
+      >
+        {loading ? "Enviando Reporte..." : "📩 Reportar Pago al Administrador"}
+      </button>
+    </div>
+
+    {/* Datos de Transferencia del Pozo (Tus datos bancarios originales) */}
+    <div style={{ background: "#1e293b", padding: "15px", borderRadius: "8px", border: "1px solid #334155", fontSize: "13px", color: "#fff" }}>
+      <strong style={{ display: "block", marginBottom: "6px" }}>Cuentas del Pozo para Transferir:</strong>
+      Banco de Venezuela<br/>
+      Cuenta: 0102-XXXX-XX-XXXXXXXXXX<br/>
+      RIF: J-XXXXXXXX-X<br/>
+      Pago Móvil: 0414-XXXXXXX
+    </div>
+  </div>
+)}
 
         {/* LADO DERECHO CONDICIONAL 2: PANEL DE CONTROL DE COBROS PARA EL ADMINISTRADOR */}
         {user?.role !== "camionero" && deudasSeleccionadas.length > 0 && (
@@ -214,7 +265,11 @@ export function CuentasPorCobrar() {
               <label style={{ fontSize: "13px", fontWeight: "500", color: "#e2e8f0" }}>💳 Método de Pago Recibido:</label>
               <select 
                 value={metodoPago} 
-                onChange={(e) => setMetodoPago(e.target.value)}
+                 onChange={(e) => {
+               setMetodoPago(e.target.value);
+                 if (e.target.value === "Efectivo") setReferencia(""); 
+                }}
+                
                 style={{ width: "100%", padding: "10px 12px", borderRadius: "8px", background: "#0f172a", color: "#fff", border: "1px solid #334155", fontSize: "14px", outline: "none" }}
               >
                 <option value="Transferencia">Transferencia Bancaria</option>
@@ -223,7 +278,27 @@ export function CuentasPorCobrar() {
                 <option value="Zelle">Zelle</option>
               </select>
             </div>
-
+                {metodoPago !== "Efectivo" && (
+             <div style={{ display: "flex", flexDirection: "column", gap: "6px", marginBottom: "20px" }}>
+            <label style={{ fontSize: "13px", fontWeight: "500", color: "#e2e8f0" }}>Número de Referencia:</label>
+             <input
+               type="text"
+                value={referencia}
+               onChange={(e) => setReferencia(e.target.value)}
+               placeholder="Ej: 00123456"
+              required
+            style={{
+              width: "100%",
+              padding: "10px 12px",
+              borderRadius: "8px",
+               background: "#0f172a",
+                color: "#fff",
+              border: "1px solid #334155",
+              boxSizing: "border-box"
+              }}
+              />
+             </div>
+              )}
             <button 
               onClick={handleLiquidarLote}
               disabled={loading}
