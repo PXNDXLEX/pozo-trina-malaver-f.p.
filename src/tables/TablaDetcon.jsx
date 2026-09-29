@@ -101,6 +101,7 @@ export function TablaDetcon({ refresh }) {
           fecha_carga,
           url_foto,
           estatus,
+          nota,
           camiones ( placa, chofer, capacidad, modelo )
         `)
         .order("fecha_carga", { ascending: false });
@@ -116,8 +117,36 @@ export function TablaDetcon({ refresh }) {
           .lte("fecha_carga", finDia.toISOString());
       }
 
-      const { data, error } = await query;
-      if (error) throw error;
+      let { data, error } = await query;
+      if (error) {
+        // Fallback si la columna 'nota' aún no existe en la base de datos
+        let fallbackQuery = supabase
+          .from("registros_carga")
+          .select(`
+            id,
+            monto,
+            metodo,
+            referencia,
+            fecha_carga,
+            url_foto,
+            estatus,
+            camiones ( placa, chofer, capacidad, modelo )
+          `)
+          .order("fecha_carga", { ascending: false });
+
+        if (!modoVerTodo && fechaSeleccionada) {
+          const [anio, mes, dia] = fechaSeleccionada.split("-").map(Number);
+          const inicioDia = new Date(anio, mes - 1, dia, 0, 0, 0, 0);
+          const finDia = new Date(anio, mes - 1, dia, 23, 59, 59, 999);
+
+          fallbackQuery = fallbackQuery
+            .gte("fecha_carga", inicioDia.toISOString())
+            .lte("fecha_carga", finDia.toISOString());
+        }
+
+        const resFallback = await fallbackQuery;
+        data = resFallback.data;
+      }
 
       setDatos(data || []);
     } catch (err) {
@@ -428,6 +457,7 @@ export function TablaDetcon({ refresh }) {
                 <th>Método de Pago</th>
                 <th>Referencia</th>
                 <th>Estado</th>
+                <th>Nota / Novedad</th>
                 <th style={{ textAlign: "center" }}>Foto</th>
               </tr>
             </thead>
@@ -483,6 +513,17 @@ export function TablaDetcon({ refresh }) {
                       <EstadoBadge className={item.estatus}>
                         {item.estatus === "pagado" ? "Pagado" : "Pendiente"}
                       </EstadoBadge>
+                    </td>
+
+                    {/* NOTA */}
+                    <td>
+                      {item.nota ? (
+                        <NotePill title={item.nota}>
+                          📝 <span>{item.nota}</span>
+                        </NotePill>
+                      ) : (
+                        <span style={{ color: "#64748b", fontSize: "11px" }}>-</span>
+                      )}
                     </td>
 
                     {/* FOTO */}
@@ -959,6 +1000,26 @@ const EstadoBadge = styled.span`
     background: rgba(239, 68, 68, 0.15);
     color: #ef4444;
     border: 1px solid rgba(239, 68, 68, 0.3);
+  }
+`;
+
+const NotePill = styled.div`
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: rgba(168, 85, 247, 0.12);
+  border: 1px solid rgba(168, 85, 247, 0.3);
+  padding: 4px 8px;
+  border-radius: 6px;
+  color: #c084fc;
+  font-size: 11px;
+  max-width: 180px;
+
+  span {
+    color: #e9d5ff;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 `;
 

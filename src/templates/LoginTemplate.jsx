@@ -57,11 +57,7 @@ export function LoginTemplate() {
       const tokenSession = authData.session.access_token;
       loginGlobal(userData, tokenSession);
 
-      if (rolAsignado === "camionero") {
-        navigate("/recarga");
-      } else {
-        navigate("/home");
-      }
+      navigate("/home");
     } catch (error) {
       console.error("Error crítico en el login por cédula:", error);
       alert("Ocurrió un error inesperado al conectar con el servidor.");

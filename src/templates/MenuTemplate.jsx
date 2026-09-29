@@ -139,7 +139,7 @@ export function MenuTemplate({ children }) {
     <Container>
       {/* 🖥️ DESKTOP TOP BAR */}
       <DesktopTopBar ref={dropdownRef}>
-        <BrandContainer to={user?.role === "camionero" ? "/recarga" : "/home"}>
+        <BrandContainer to="/home">
           <LogoBadge>💧</LogoBadge>
           <BrandTitle>
             Pozo Trina <span>Malaver F.P.</span>
@@ -147,19 +147,15 @@ export function MenuTemplate({ children }) {
         </BrandContainer>
 
         <NavGroup>
-          {user?.role !== "camionero" && (
-            <NavLink to="/home" className={location.pathname === "/home" ? "active" : ""}>
-              <MdDashboard className="nav-icon" /> Dashboard
-            </NavLink>
-          )}
+          <NavLink to="/home" className={location.pathname === "/home" ? "active" : ""}>
+            <MdDashboard className="nav-icon" /> Dashboard
+          </NavLink>
 
-          {user?.role !== "camionero" && (
-            <BotonModalRecargaNav type="button" onClick={() => setModalRecargaNav(true)}>
-              <MdWaterDrop /> Nueva Recarga
-            </BotonModalRecargaNav>
-          )}
+          <BotonModalRecargaNav type="button" onClick={() => setModalRecargaNav(true)}>
+            <MdWaterDrop /> Nueva Recarga
+          </BotonModalRecargaNav>
 
-          {user?.role !== "camionero" && (
+          {user?.role === "administrador" ? (
             <DropdownContainer>
               <DropdownTrigger
                 onClick={() => toggleDropdown("camiones")}
@@ -173,53 +169,26 @@ export function MenuTemplate({ children }) {
                   <DropdownItem to="/camion" className={location.pathname === "/camion" ? "active" : ""}>
                     <MdAddCircleOutline /> Registro de Camiones
                   </DropdownItem>
-                  {user?.role === "administrador" && (
-                    <DropdownItem to="/listcamion" className={location.pathname === "/listcamion" ? "active" : ""}>
-                      <MdFormatListBulleted /> Lista de Camiones
-                    </DropdownItem>
-                  )}
+                  <DropdownItem to="/listcamion" className={location.pathname === "/listcamion" ? "active" : ""}>
+                    <MdFormatListBulleted /> Lista de Camiones
+                  </DropdownItem>
                 </DropdownMenu>
               )}
             </DropdownContainer>
+          ) : (
+            <NavLink to="/camion" className={location.pathname === "/camion" ? "active" : ""}>
+              <MdLocalShipping className="nav-icon" /> Camiones
+            </NavLink>
           )}
 
-          <DropdownContainer>
-            <DropdownTrigger
-              onClick={() => toggleDropdown("ventas")}
-              className={location.pathname === "/recarga" || location.pathname === "/detalle-recarga" ? "active" : ""}
+          {user?.role === "administrador" && (
+            <NavLink
+              to="/detalle-recarga"
+              className={location.pathname === "/detalle-recarga" ? "active" : ""}
             >
-              <MdWaterDrop className="nav-icon" /> Recargas <MdKeyboardArrowDown className="chevron" />
-            </DropdownTrigger>
-
-            {activeDropdown === "ventas" && (
-              <DropdownMenu>
-                {user?.role !== "camionero" && (
-                  <DropdownButtonAction
-                    type="button"
-                    onClick={() => {
-                      setModalRecargaNav(true);
-                      setActiveDropdown(null);
-                    }}
-                  >
-                    <MdWaterDrop /> Registrar Recarga (Modal)
-                  </DropdownButtonAction>
-                )}
-                <DropdownItem to="/recarga" className={location.pathname === "/recarga" ? "active" : ""}>
-                  <MdAddCircleOutline /> Registro en Lote / Clásico
-                </DropdownItem>
-                {user?.role === "administrador" && (
-                  <>
-                    <DropdownItem to="/detalle-recarga" className={location.pathname === "/detalle-recarga" ? "active" : ""}>
-                      <MdFormatListBulleted /> Recargas del Día
-                    </DropdownItem>
-                    <DropdownItem to="/pagos" className={location.pathname === "/pagos" ? "active" : ""}>
-                      <MdPayments /> Pagos Registrados
-                    </DropdownItem>
-                  </>
-                )}
-              </DropdownMenu>
-            )}
-          </DropdownContainer>
+              <MdWaterDrop className="nav-icon" /> Recargas
+            </NavLink>
+          )}
 
           {user?.role === "administrador" && (
             <NavLink to="/pagos" className={location.pathname === "/pagos" ? "active" : ""}>
@@ -227,11 +196,12 @@ export function MenuTemplate({ children }) {
             </NavLink>
           )}
 
-          {user?.role !== "registrador" && (
+          {user?.role === "administrador" && (
             <NavLink to="/cuentas-por-cobrar" className={location.pathname === "/cuentas-por-cobrar" ? "active" : ""}>
               <MdReceipt className="icon" /> Cuentas por Cobrar
             </NavLink>
           )}
+
           {user?.role === "administrador" && (
             <NavLink to="/contabilidad" className={location.pathname === "/contabilidad" ? "active" : ""}>
               <MdAssessment className="nav-icon" /> Contabilidad
@@ -299,14 +269,22 @@ export function MenuTemplate({ children }) {
 
       {/* 📱 MOBILE BOTTOM NAVIGATION BAR */}
       <MobileBottomNav>
-        {user?.role !== "camionero" && (
-          <NavItemMobile to="/home" className={location.pathname === "/home" ? "active" : ""}>
-            <MdDashboard />
-            <span>Dashboard</span>
-          </NavItemMobile>
-        )}
+        <NavItemMobile to="/home" className={location.pathname === "/home" ? "active" : ""}>
+          <MdDashboard />
+          <span>Dashboard</span>
+        </NavItemMobile>
 
-        {user?.role !== "camionero" && (
+        <NavButtonMobile
+          type="button"
+          onClick={() => setModalRecargaNav(true)}
+          style={{ color: "#00c3ff" }}
+          title="Nueva Recarga"
+        >
+          <MdWaterDrop style={{ fontSize: "22px" }} />
+          <span style={{ fontWeight: 700 }}>+ Recarga</span>
+        </NavButtonMobile>
+
+        {user?.role === "administrador" ? (
           <NavButtonMobile
             onClick={() => setMobileSheet("camiones")}
             className={location.pathname.includes("camion") ? "active" : ""}
@@ -314,21 +292,20 @@ export function MenuTemplate({ children }) {
             <MdLocalShipping />
             <span>Camiones</span>
           </NavButtonMobile>
+        ) : (
+          <NavItemMobile to="/camion" className={location.pathname === "/camion" ? "active" : ""}>
+            <MdLocalShipping />
+            <span>Camiones</span>
+          </NavItemMobile>
         )}
 
-        <NavButtonMobile
-          onClick={() => setMobileSheet("ventas")}
-          className={location.pathname === "/recarga" || location.pathname === "/detalle-recarga" ? "active" : ""}
-        >
-          <MdWaterDrop />
-          <span>Recargas</span>
-        </NavButtonMobile>
+        {user?.role === "administrador" && (
+          <NavItemMobile to="/detalle-recarga" className={location.pathname === "/detalle-recarga" ? "active" : ""}>
+            <MdFormatListBulleted />
+            <span>Recargas</span>
+          </NavItemMobile>
+        )}
 
-          {user?.role !== "registrador" && (
-          <NavItemMobile to="/cuentas-por-cobrar"  className={location.pathname === "/cuentas-por-cobrar" ? "active" : ""}>
-           <MdReceipt/> <span> Deudas </span>
-        </NavItemMobile>
-           )}
         {user?.role === "administrador" && (
           <NavItemMobile to="/pagos" className={location.pathname === "/pagos" ? "active" : ""}>
             <MdPayments />
@@ -337,9 +314,9 @@ export function MenuTemplate({ children }) {
         )}
 
         {user?.role === "administrador" && (
-          <NavItemMobile to="/contabilidad" className={location.pathname === "/contabilidad" ? "active" : ""}>
-            <MdAssessment />
-            <span>Balances</span>
+          <NavItemMobile to="/cuentas-por-cobrar" className={location.pathname === "/cuentas-por-cobrar" ? "active" : ""}>
+            <MdReceipt />
+            <span>Deudas</span>
           </NavItemMobile>
         )}
 
@@ -366,7 +343,6 @@ export function MenuTemplate({ children }) {
             <SheetHeader>
               <h3>
                 {mobileSheet === "camiones" && "🚚 Gestión de Camiones"}
-                {mobileSheet === "ventas" && "💧 Gestión de Recargas"}
                 {mobileSheet === "usuarios" && "👥 Gestión de Usuarios"}
               </h3>
               <button onClick={() => setMobileSheet(null)}>
@@ -384,35 +360,6 @@ export function MenuTemplate({ children }) {
                     <Link to="/listcamion">
                       <MdFormatListBulleted /> Ver Lista de Camiones
                     </Link>
-                  )}
-                </>
-              )}
-
-              {mobileSheet === "ventas" && (
-                <>
-                  {user?.role !== "camionero" && (
-                    <SheetButtonAction
-                      type="button"
-                      onClick={() => {
-                        setModalRecargaNav(true);
-                        setMobileSheet(null);
-                      }}
-                    >
-                      <MdWaterDrop /> Registrar Recarga (Modal)
-                    </SheetButtonAction>
-                  )}
-                  <Link to="/recarga">
-                    <MdAddCircleOutline /> Nueva Recarga / Venta en Lote
-                  </Link>
-                  {user?.role === "administrador" && (
-                    <>
-                      <Link to="/detalle-recarga">
-                        <MdFormatListBulleted /> Lista de Recargas del Día
-                      </Link>
-                      <Link to="/pagos">
-                        <MdPayments /> Control de Pagos Registrados
-                      </Link>
-                    </>
                   )}
                 </>
               )}

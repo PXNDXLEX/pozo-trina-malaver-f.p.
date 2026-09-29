@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import styled from "styled-components";
 import { supabase } from "../supabase/supabase.config";
+import { useAuthStore } from "../store/AuthStore";
 import {
   MdClose,
   MdLocalShipping,
@@ -11,12 +12,15 @@ import {
   MdCheckCircle,
   MdHourglassEmpty,
   MdDeleteOutline,
+  MdEditNote,
 } from "react-icons/md";
 
 export function ModalRegistrarRecarga({ isOpen, onClose, onRecargaExitosa }) {
+  const user = useAuthStore((state) => state.user);
   const [camiones, setCamiones] = useState([]);
   const [camionSeleccionadoId, setCamionSeleccionadoId] = useState("");
   const [monto, setMonto] = useState("");
+  const [nota, setNota] = useState("");
   
   // Fotos
   const [fotoCamion, setFotoCamion] = useState(null);
@@ -60,6 +64,7 @@ export function ModalRegistrarRecarga({ isOpen, onClose, onRecargaExitosa }) {
   const limpiarCampos = () => {
     setCamionSeleccionadoId("");
     setMonto("");
+    setNota("");
     setFotoCamion(null);
     setPreviewCamion(null);
     setFotoComprobante(null);
@@ -166,34 +171,25 @@ export function ModalRegistrarRecarga({ isOpen, onClose, onRecargaExitosa }) {
         estatus: estatusFinal,
       };
 
-      // Intentamos primero guardar con url_comprobante si existe
-      let insertError = null;
-      if (urlComprobante) {
-        const { error: errConComprobante } = await supabase
-          .from("registros_carga")
-          .insert([{ ...registroPayload, url_comprobante: urlComprobante }]);
+      // Payload extendido con nota, usuario_id y url_comprobante
+      const payloadExtendido = { ...registroPayload };
+      if (urlComprobante) payloadExtendido.url_comprobante = urlComprobante;
+      if (user?.id) payloadExtendido.usuario_id = user.id;
+      if (nota.trim()) payloadExtendido.nota = nota.trim();
 
-        if (errConComprobante) {
-          // Si la columna url_comprobante aún no existe en Supabase, reintentamos sin ella
-          if (
-            errConComprobante.code === "PGRST204" ||
-            errConComprobante.code === "42703" ||
-            errConComprobante.message?.includes("url_comprobante")
-          ) {
-            console.warn("Columna url_comprobante no existe en registros_carga. Guardando sin ella.");
-            const { error: errFallback } = await supabase
-              .from("registros_carga")
-              .insert([registroPayload]);
-            insertError = errFallback;
-          } else {
-            insertError = errConComprobante;
-          }
-        }
-      } else {
-        const { error } = await supabase
+      // Intento 1: Guardar con todos los campos extendidos
+      let { error: insertError } = await supabase
+        .from("registros_carga")
+        .insert([payloadExtendido]);
+
+      if (insertError) {
+        console.warn("Fallo inserción con columnas extendidas, reintentando con payload base:", insertError.message);
+        // Si las columnas nuevas (usuario_id, nota, url_comprobante) no existen en la base de datos de Supabase todavía,
+        // realizamos fallback seguro con los campos base para que el registro nunca falle.
+        const { error: errFallback } = await supabase
           .from("registros_carga")
           .insert([registroPayload]);
-        insertError = error;
+        insertError = errFallback;
       }
 
       if (insertError) throw insertError;
@@ -428,6 +424,19 @@ export function ModalRegistrarRecarga({ isOpen, onClose, onRecargaExitosa }) {
                 </div>
               </DebtNoticeBox>
             )}
+
+            {/* 6. NOTA U OBSERVACIÓN PARA REVISIÓN */}
+            <FormGroup>
+              <Label>
+                <MdEditNote className="icon" /> Nota u Observación de la Carga: <span className="optional">(Opcional para revisión posterior)</span>
+              </Label>
+              <Textarea
+                rows="2"
+                placeholder="Ej: Chofer reportó novedad, pendiente validar en taquilla..."
+                value={nota}
+                onChange={(e) => setNota(e.target.value)}
+              />
+            </FormGroup>
           </ModalBody>
 
           <ModalFooter>
@@ -615,6 +624,28 @@ const Input = styled.input`
   color: #ffffff;
   font-size: 14px;
   outline: none;
+  transition: all 0.2s ease;
+  box-sizing: border-box;
+
+  &:focus {
+    border-color: #00c3ff;
+    background: rgba(15, 23, 42, 0.95);
+    box-shadow: 0 0 10px rgba(0, 195, 255, 0.25);
+  }
+`;
+
+const Textarea = styled.textarea`
+  width: 100%;
+  padding: 11px 14px;
+  background: rgba(15, 23, 42, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 10px;
+  color: #ffffff;
+  font-size: 13px;
+  font-family: inherit;
+  outline: none;
+  resize: vertical;
+  min-height: 58px;
   transition: all 0.2s ease;
   box-sizing: border-box;
 

@@ -1,7 +1,9 @@
 import React, { useEffect, useState, useMemo } from "react";
 import { MenuTemplate } from "../templates/MenuTemplate";
 import { supabase } from "../supabase/supabase.config";
+import { useAuthStore } from "../store/AuthStore";
 import { ModalRegistrarRecarga } from "../components/ModalRegistrarRecarga";
+import { DashboardRegistrador } from "../components/DashboardRegistrador";
 import {
   BarChart,
   Bar,
@@ -18,6 +20,17 @@ import styled from "styled-components";
 import { MdTrendingUp, MdAttachMoney, MdLocalShipping, MdCalendarToday, MdWaterDrop } from "react-icons/md";
 
 export function Home() {
+  const user = useAuthStore((state) => state.user);
+
+  // 🎯 Si el usuario es Registrador, renderizar exclusivamente su Dashboard Operativo
+  if (user?.role === "registrador") {
+    return (
+      <MenuTemplate>
+        <DashboardRegistrador />
+      </MenuTemplate>
+    );
+  }
+
   const [dataRaw, setDataRaw] = useState([]);
   const [filtroDias, setFiltroDias] = useState(3650); // 3650 = Todo el histórico por defecto
   const [loading, setLoading] = useState(true);

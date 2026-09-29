@@ -8,10 +8,9 @@ export function MyRoutes(){
       <Route path="/" element={<Login />} />
       
 
-      <Route element={<ProtectedRoute rolesPermitidos={["administrador", "registrador","camionero"]} />}>
-        <Route path="/recarga" element={<RegVentas />} />
-          <Route path="/cuentas-por-cobrar" element={<CuentasPorCobrar />} />
-
+      <Route path="/recarga" element={<Navigate to="/home" replace />} />
+      <Route element={<ProtectedRoute rolesPermitidos={["administrador", "registrador", "camionero"]} />}>
+        <Route path="/cuentas-por-cobrar" element={<CuentasPorCobrar />} />
       </Route>
 
       {/* 🔐 PANTALLAS COMPARTIDAS: Administrador y Registrador */}
