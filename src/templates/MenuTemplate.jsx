@@ -147,87 +147,97 @@ export function MenuTemplate({ children }) {
         </BrandContainer>
 
         <NavGroup>
-          <NavLink to="/home" className={location.pathname === "/home" ? "active" : ""}>
-            <MdDashboard className="nav-icon" /> Dashboard
-          </NavLink>
+          {user?.role === "registrador" ? (
+            <>
+              <NavLink to="/home" className={location.pathname === "/home" ? "active" : ""}>
+                <MdWaterDrop className="nav-icon" /> Recargar Agua
+              </NavLink>
 
-          <BotonModalRecargaNav type="button" onClick={() => setModalRecargaNav(true)}>
-            <MdWaterDrop /> Nueva Recarga
-          </BotonModalRecargaNav>
+              <NavLink to="/camion" className={location.pathname === "/camion" ? "active" : ""}>
+                <MdLocalShipping className="nav-icon" /> Camiones
+              </NavLink>
+            </>
+          ) : (
+            <>
+              <NavLink to="/home" className={location.pathname === "/home" ? "active" : ""}>
+                <MdDashboard className="nav-icon" /> Dashboard
+              </NavLink>
 
-          {user?.role === "administrador" ? (
-            <DropdownContainer>
-              <DropdownTrigger
-                onClick={() => toggleDropdown("camiones")}
-                className={location.pathname.includes("camion") ? "active" : ""}
-              >
-                <MdLocalShipping className="nav-icon" /> Camiones <MdKeyboardArrowDown className="chevron" />
-              </DropdownTrigger>
+              <BotonModalRecargaNav type="button" onClick={() => setModalRecargaNav(true)}>
+                <MdWaterDrop /> Nueva Recarga
+              </BotonModalRecargaNav>
 
-              {activeDropdown === "camiones" && (
-                <DropdownMenu>
-                  <DropdownItem to="/camion" className={location.pathname === "/camion" ? "active" : ""}>
-                    <MdAddCircleOutline /> Registro de Camiones
-                  </DropdownItem>
-                  <DropdownItem to="/listcamion" className={location.pathname === "/listcamion" ? "active" : ""}>
-                    <MdFormatListBulleted /> Lista de Camiones
-                  </DropdownItem>
-                </DropdownMenu>
+              {user?.role === "administrador" && (
+                <DropdownContainer>
+                  <DropdownTrigger
+                    onClick={() => toggleDropdown("camiones")}
+                    className={location.pathname.includes("camion") ? "active" : ""}
+                  >
+                    <MdLocalShipping className="nav-icon" /> Camiones <MdKeyboardArrowDown className="chevron" />
+                  </DropdownTrigger>
+
+                  {activeDropdown === "camiones" && (
+                    <DropdownMenu>
+                      <DropdownItem to="/camion" className={location.pathname === "/camion" ? "active" : ""}>
+                        <MdAddCircleOutline /> Registro de Camiones
+                      </DropdownItem>
+                      <DropdownItem to="/listcamion" className={location.pathname === "/listcamion" ? "active" : ""}>
+                        <MdFormatListBulleted /> Lista de Camiones
+                      </DropdownItem>
+                    </DropdownMenu>
+                  )}
+                </DropdownContainer>
               )}
-            </DropdownContainer>
-          ) : user?.role === "registrador" ? (
-            <NavLink to="/camion" className={location.pathname === "/camion" ? "active" : ""}>
-              <MdLocalShipping className="nav-icon" /> Camiones
-            </NavLink>
-          ) : null}
 
-          {user?.role === "administrador" && (
-            <NavLink
-              to="/detalle-recarga"
-              className={location.pathname === "/detalle-recarga" ? "active" : ""}
-            >
-              <MdWaterDrop className="nav-icon" /> Recargas
-            </NavLink>
-          )}
-
-          {user?.role === "administrador" && (
-            <NavLink to="/pagos" className={location.pathname === "/pagos" ? "active" : ""}>
-              <MdPayments className="nav-icon" /> Pagos
-            </NavLink>
-          )}
-
-          {(user?.role === "administrador" || user?.role === "camionero") && (
-            <NavLink to="/cuentas-por-cobrar" className={location.pathname === "/cuentas-por-cobrar" ? "active" : ""}>
-              <MdReceipt className="icon" /> {user?.role === "camionero" ? "Mis Cuentas por Pagar" : "Cuentas por Cobrar"}
-            </NavLink>
-          )}
-
-          {user?.role === "administrador" && (
-            <NavLink to="/contabilidad" className={location.pathname === "/contabilidad" ? "active" : ""}>
-              <MdAssessment className="nav-icon" /> Contabilidad
-            </NavLink>
-          )}
-
-          {user?.role === "administrador" && (
-            <DropdownContainer>
-              <DropdownTrigger
-                onClick={() => toggleDropdown("usuarios")}
-                className={location.pathname === "/usuario" || location.pathname === "/gestusuarios" ? "active" : ""}
-              >
-                <MdPeople className="nav-icon" /> Usuarios <MdKeyboardArrowDown className="chevron" />
-              </DropdownTrigger>
-
-              {activeDropdown === "usuarios" && (
-                <DropdownMenu>
-                  <DropdownItem to="/usuario" className={location.pathname === "/usuario" ? "active" : ""}>
-                    <MdPersonAdd /> Registrar Usuario
-                  </DropdownItem>
-                  <DropdownItem to="/gestusuarios" className={location.pathname === "/gestusuarios" ? "active" : ""}>
-                    <MdManageAccounts /> Gestión de Usuarios
-                  </DropdownItem>
-                </DropdownMenu>
+              {user?.role === "administrador" && (
+                <NavLink
+                  to="/detalle-recarga"
+                  className={location.pathname === "/detalle-recarga" ? "active" : ""}
+                >
+                  <MdWaterDrop className="nav-icon" /> Recargas
+                </NavLink>
               )}
-            </DropdownContainer>
+
+              {user?.role === "administrador" && (
+                <NavLink to="/pagos" className={location.pathname === "/pagos" ? "active" : ""}>
+                  <MdPayments className="nav-icon" /> Pagos
+                </NavLink>
+              )}
+
+              {(user?.role === "administrador" || user?.role === "camionero") && (
+                <NavLink to="/cuentas-por-cobrar" className={location.pathname === "/cuentas-por-cobrar" ? "active" : ""}>
+                  <MdReceipt className="icon" /> {user?.role === "camionero" ? "Mis Cuentas por Pagar" : "Cuentas por Cobrar"}
+                </NavLink>
+              )}
+
+              {user?.role === "administrador" && (
+                <NavLink to="/contabilidad" className={location.pathname === "/contabilidad" ? "active" : ""}>
+                  <MdAssessment className="nav-icon" /> Contabilidad
+                </NavLink>
+              )}
+
+              {user?.role === "administrador" && (
+                <DropdownContainer>
+                  <DropdownTrigger
+                    onClick={() => toggleDropdown("usuarios")}
+                    className={location.pathname === "/usuario" || location.pathname === "/gestusuarios" ? "active" : ""}
+                  >
+                    <MdPeople className="nav-icon" /> Usuarios <MdKeyboardArrowDown className="chevron" />
+                  </DropdownTrigger>
+
+                  {activeDropdown === "usuarios" && (
+                    <DropdownMenu>
+                      <DropdownItem to="/usuario" className={location.pathname === "/usuario" ? "active" : ""}>
+                        <MdPersonAdd /> Registrar Usuario
+                      </DropdownItem>
+                      <DropdownItem to="/gestusuarios" className={location.pathname === "/gestusuarios" ? "active" : ""}>
+                        <MdManageAccounts /> Gestión de Usuarios
+                      </DropdownItem>
+                    </DropdownMenu>
+                  )}
+                </DropdownContainer>
+              )}
+            </>
           )}
         </NavGroup>
 
@@ -269,71 +279,87 @@ export function MenuTemplate({ children }) {
 
       {/* 📱 MOBILE BOTTOM NAVIGATION BAR */}
       <MobileBottomNav>
-        <NavItemMobile to="/home" className={location.pathname === "/home" ? "active" : ""}>
-          <MdDashboard />
-          <span>Dashboard</span>
-        </NavItemMobile>
+        {user?.role === "registrador" ? (
+          <>
+            <NavItemMobile to="/home" className={location.pathname === "/home" ? "active" : ""}>
+              <MdWaterDrop />
+              <span>Recargar</span>
+            </NavItemMobile>
 
-        <NavButtonMobile
-          type="button"
-          onClick={() => setModalRecargaNav(true)}
-          style={{ color: "#00c3ff" }}
-          title="Nueva Recarga"
-        >
-          <MdWaterDrop style={{ fontSize: "22px" }} />
-          <span style={{ fontWeight: 700 }}>+ Recarga</span>
-        </NavButtonMobile>
+            <NavItemMobile to="/camion" className={location.pathname === "/camion" ? "active" : ""}>
+              <MdLocalShipping />
+              <span>Camiones</span>
+            </NavItemMobile>
 
-        {user?.role === "administrador" ? (
-          <NavButtonMobile
-            onClick={() => setMobileSheet("camiones")}
-            className={location.pathname.includes("camion") ? "active" : ""}
-          >
-            <MdLocalShipping />
-            <span>Camiones</span>
-          </NavButtonMobile>
-        ) : user?.role === "registrador" ? (
-          <NavItemMobile to="/camion" className={location.pathname === "/camion" ? "active" : ""}>
-            <MdLocalShipping />
-            <span>Camiones</span>
-          </NavItemMobile>
-        ) : null}
+            <NavButtonMobile onClick={handleLogout} style={{ color: "#ef4444" }}>
+              <MdLogout />
+              <span>Salir</span>
+            </NavButtonMobile>
+          </>
+        ) : (
+          <>
+            <NavItemMobile to="/home" className={location.pathname === "/home" ? "active" : ""}>
+              <MdDashboard />
+              <span>Dashboard</span>
+            </NavItemMobile>
 
-        {user?.role === "administrador" && (
-          <NavItemMobile to="/detalle-recarga" className={location.pathname === "/detalle-recarga" ? "active" : ""}>
-            <MdFormatListBulleted />
-            <span>Recargas</span>
-          </NavItemMobile>
+            <NavButtonMobile
+              type="button"
+              onClick={() => setModalRecargaNav(true)}
+              style={{ color: "#00c3ff" }}
+              title="Nueva Recarga"
+            >
+              <MdWaterDrop style={{ fontSize: "22px" }} />
+              <span style={{ fontWeight: 700 }}>+ Recarga</span>
+            </NavButtonMobile>
+
+            {user?.role === "administrador" && (
+              <NavButtonMobile
+                onClick={() => setMobileSheet("camiones")}
+                className={location.pathname.includes("camion") ? "active" : ""}
+              >
+                <MdLocalShipping />
+                <span>Camiones</span>
+              </NavButtonMobile>
+            )}
+
+            {user?.role === "administrador" && (
+              <NavItemMobile to="/detalle-recarga" className={location.pathname === "/detalle-recarga" ? "active" : ""}>
+                <MdFormatListBulleted />
+                <span>Recargas</span>
+              </NavItemMobile>
+            )}
+
+            {user?.role === "administrador" && (
+              <NavItemMobile to="/pagos" className={location.pathname === "/pagos" ? "active" : ""}>
+                <MdPayments />
+                <span>Pagos</span>
+              </NavItemMobile>
+            )}
+
+            {(user?.role === "administrador" || user?.role === "camionero") && (
+              <NavItemMobile to="/cuentas-por-cobrar" className={location.pathname === "/cuentas-por-cobrar" ? "active" : ""}>
+                <MdReceipt />
+                <span>{user?.role === "camionero" ? "Mis Deudas" : "Deudas"}</span>
+              </NavItemMobile>
+            )}
+
+            {user?.role === "administrador" && (
+              <NavButtonMobile
+                onClick={() => setMobileSheet("usuarios")}
+                className={location.pathname === "/usuario" || location.pathname === "/gestusuarios" ? "active" : ""}
+              >
+                <MdPeople />
+                <span>Usuarios</span>
+              </NavButtonMobile>
+            )}
+
+            <NavButtonMobile onClick={handleLogout} style={{ color: "#ef4444" }}>
+              <MdLogout />
+              <span>Salir</span>
+            </NavButtonMobile>
+          </>
         )}
-
-        {user?.role === "administrador" && (
-          <NavItemMobile to="/pagos" className={location.pathname === "/pagos" ? "active" : ""}>
-            <MdPayments />
-            <span>Pagos</span>
-          </NavItemMobile>
-        )}
-
-        {(user?.role === "administrador" || user?.role === "camionero") && (
-          <NavItemMobile to="/cuentas-por-cobrar" className={location.pathname === "/cuentas-por-cobrar" ? "active" : ""}>
-            <MdReceipt />
-            <span>{user?.role === "camionero" ? "Mis Deudas" : "Deudas"}</span>
-          </NavItemMobile>
-        )}
-
-        {user?.role === "administrador" && (
-          <NavButtonMobile
-            onClick={() => setMobileSheet("usuarios")}
-            className={location.pathname === "/usuario" || location.pathname === "/gestusuarios" ? "active" : ""}
-          >
-            <MdPeople />
-            <span>Usuarios</span>
-          </NavButtonMobile>
-        )}
-
-        <NavButtonMobile onClick={handleLogout} style={{ color: "#ef4444" }}>
-          <MdLogout />
-          <span>Salir</span>
-        </NavButtonMobile>
       </MobileBottomNav>
 
       {/* 📱 MOBILE BOTTOM SHEET */}

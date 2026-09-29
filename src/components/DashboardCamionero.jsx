@@ -14,13 +14,16 @@ import {
   MdClose,
   MdOutlineAccessTime,
   MdSpeed,
-  MdAddCircle
+  MdAddCircle,
+  MdFilterList,
 } from "react-icons/md";
 
 export function DashboardCamionero() {
   const user = useAuthStore((state) => state.user);
 
-  const [miCamion, setMiCamion] = useState(null);
+  // Lista de camiones asignados al chofer (puede tener 1 o varios)
+  const [misCamiones, setMisCamiones] = useState([]);
+  const [camionFiltradoId, setCamionFiltradoId] = useState("todos"); // "todos" o id de camión
   const [registros, setRegistros] = useState([]);
   const [loading, setLoading] = useState(true);
   const [modalRecargaAbierto, setModalRecargaAbierto] = useState(false);
@@ -33,29 +36,53 @@ export function DashboardCamionero() {
   const cargarDatosCamionero = async () => {
     setLoading(true);
     try {
-      let camionAsignado = null;
+      let trucks = [];
 
-      // 1. Buscar si tiene camión asignado por perfil_id
+      // 1. Buscar camiones asignados por perfil_id directo
       if (user?.id) {
-        const { data: camionData } = await supabase
+        const { data: byPerfil } = await supabase
           .from("camiones")
-          .select("id, placa, chofer, capacidad, modelo, perfil_id")
-          .eq("perfil_id", user.id)
-          .maybeSingle();
+          .select("id, placa, chofer, capacidad, modelo, perfil_id, camionero_id")
+          .eq("perfil_id", user.id);
 
-        if (camionData) {
-          camionAsignado = camionData;
-          setMiCamion(camionData);
-        } else {
-          // Si el chofer NO tiene camión asignado, NO debe ver registros de ningún otro camión
-          setMiCamion(null);
-          setRegistros([]);
-          setLoading(false);
-          return;
+        if (byPerfil) trucks.push(...byPerfil);
+
+        // 2. Buscar si está vinculado a través de la tabla camioneros
+        try {
+          const { data: camioneroRow } = await supabase
+            .from("camioneros")
+            .select("id, nombre")
+            .eq("perfil_id", user.id)
+            .maybeSingle();
+
+          if (camioneroRow?.id) {
+            const { data: byCamioneroId } = await supabase
+              .from("camiones")
+              .select("id, placa, chofer, capacidad, modelo, perfil_id, camionero_id")
+              .eq("camionero_id", camioneroRow.id);
+
+            if (byCamioneroId) trucks.push(...byCamioneroId);
+          }
+        } catch (errCamioneros) {
+          // ignore si la tabla no existe
         }
       }
 
-      // 2. Cargar recargas ÚNICAMENTE de su camión asignado
+      // Deduplicar unidades por id
+      const trucksMap = new Map();
+      trucks.forEach((t) => trucksMap.set(t.id, t));
+      const listaFinal = Array.from(trucksMap.values());
+      setMisCamiones(listaFinal);
+
+      if (listaFinal.length === 0) {
+        setRegistros([]);
+        setLoading(false);
+        return;
+      }
+
+      const idsCamiones = listaFinal.map((c) => c.id);
+
+      // 3. Cargar recargas de todas sus unidades
       const { data: cargasData, error } = await supabase
         .from("registros_carga")
         .select(`
@@ -70,9 +97,9 @@ export function DashboardCamionero() {
           nota,
           camiones ( id, chofer, placa, capacidad, modelo )
         `)
-        .eq("camion_id", camionAsignado.id)
+        .in("camion_id", idsCamiones)
         .order("fecha_carga", { ascending: false })
-        .limit(50);
+        .limit(100);
 
       if (!error && cargasData) {
         setRegistros(cargasData);
@@ -87,16 +114,22 @@ export function DashboardCamionero() {
     }
   };
 
-  // Métricas del chofer
+  // Filtrado de recargas según selector de unidad
+  const registrosFiltrados = useMemo(() => {
+    if (camionFiltradoId === "todos") return registros;
+    return registros.filter((r) => String(r.camion_id) === String(camionFiltradoId));
+  }, [registros, camionFiltradoId]);
+
+  // Métricas del chofer / unidades
   const metricas = useMemo(() => {
-    let totalViajes = registros.length;
+    let totalViajes = registrosFiltrados.length;
     let litrosTotales = 0;
     let pagados = 0;
     let pendientes = 0;
     let montoPendiente = 0;
 
-    registros.forEach((r) => {
-      const cap = Number(r.camiones?.capacidad) || Number(miCamion?.capacidad) || 0;
+    registrosFiltrados.forEach((r) => {
+      const cap = Number(r.camiones?.capacidad) || 0;
       litrosTotales += cap;
 
       if (r.estatus === "pagado") {
@@ -114,7 +147,7 @@ export function DashboardCamionero() {
       pendientes,
       montoPendiente,
     };
-  }, [registros, miCamion]);
+  }, [registrosFiltrados]);
 
   const formatearFechaHora = (fechaIso) => {
     if (!fechaIso) return "--";
@@ -128,6 +161,8 @@ export function DashboardCamionero() {
       hour12: true,
     });
   };
+
+  const primerCamion = misCamiones[0] || null;
 
   return (
     <Container>
@@ -155,22 +190,43 @@ export function DashboardCamionero() {
           </HeroBtnRow>
         </HeroContent>
 
-        {miCamion && (
+        {/* SI TIENE 1 SOLO CAMIÓN */}
+        {misCamiones.length === 1 && primerCamion && (
           <TruckSummaryCard>
             <div className="truck-header">
               <MdSpeed className="gauge-icon" />
               <span>Mi Unidad Cisterna</span>
             </div>
-            <div className="placa-title">{miCamion.placa}</div>
+            <div className="placa-title">{primerCamion.placa}</div>
             <div className="truck-specs">
-              <span>💧 Capacidad: <strong>{miCamion.capacidad?.toLocaleString()} Lts</strong></span>
-              {miCamion.modelo && <span>🚚 Modelo: <strong>{miCamion.modelo}</strong></span>}
+              <span>💧 Capacidad: <strong>{primerCamion.capacidad?.toLocaleString()} Lts</strong></span>
+              {primerCamion.modelo && <span>🚚 Modelo: <strong>{primerCamion.modelo}</strong></span>}
             </div>
           </TruckSummaryCard>
         )}
+
+        {/* SI TIENE MÚLTIPLES CAMIONES (FLOTA DE 2 O MÁS) */}
+        {misCamiones.length > 1 && (
+          <FleetSummaryCard>
+            <div className="fleet-header">
+              <MdLocalShipping className="fleet-icon" />
+              <span>Mis Unidades Cisterna ({misCamiones.length})</span>
+            </div>
+            <div className="fleet-units-grid">
+              {misCamiones.map((c) => (
+                <div key={c.id} className="unit-pill">
+                  <span className="unit-plate">{c.placa}</span>
+                  <span className="unit-cap">💧 {c.capacidad?.toLocaleString()} Lts</span>
+                  {c.modelo && <span className="unit-mod">{c.modelo}</span>}
+                </div>
+              ))}
+            </div>
+          </FleetSummaryCard>
+        )}
       </HeroCard>
 
-      {!miCamion && (
+      {/* AVISO SI NO TIENE CAMIÓN ASIGNADO */}
+      {misCamiones.length === 0 && !loading && (
         <AvisoSinCamion>
           <div className="aviso-icon">⚠️</div>
           <div className="aviso-body">
@@ -181,6 +237,32 @@ export function DashboardCamionero() {
             </p>
           </div>
         </AvisoSinCamion>
+      )}
+
+      {/* SELECTOR / FILTRO DE UNIDAD SI TIENE MÚLTIPLES CAMIONES */}
+      {misCamiones.length > 1 && (
+        <FilterFleetBar>
+          <div className="filter-title">
+            <MdFilterList /> Ver viajes de:
+          </div>
+          <div className="pills-row">
+            <FleetFilterPill
+              $active={camionFiltradoId === "todos"}
+              onClick={() => setCamionFiltradoId("todos")}
+            >
+              📋 Todas mis unidades ({misCamiones.length})
+            </FleetFilterPill>
+            {misCamiones.map((c) => (
+              <FleetFilterPill
+                key={c.id}
+                $active={String(camionFiltradoId) === String(c.id)}
+                onClick={() => setCamionFiltradoId(c.id)}
+              >
+                🚚 {c.placa} ({c.capacidad?.toLocaleString()} Lts)
+              </FleetFilterPill>
+            ))}
+          </div>
+        </FilterFleetBar>
       )}
 
       {/* 📊 TARJETAS OPERATIVAS DEL CHOFER */}
@@ -235,7 +317,11 @@ export function DashboardCamionero() {
         <TableTopBar>
           <div>
             <h3>💧 Mis Últimas Recargas Registradas</h3>
-            <p>Historial de viajes realizados con tu unidad cisterna</p>
+            <p>
+              {camionFiltradoId === "todos"
+                ? "Historial de viajes realizados con tus unidades cisterna"
+                : `Historial filtrado para la unidad seleccionada`}
+            </p>
           </div>
           <BotonSecundarioRecarga onClick={() => setModalRecargaAbierto(true)}>
             <MdAddCircle /> Nueva Recarga
@@ -244,13 +330,13 @@ export function DashboardCamionero() {
 
         {loading ? (
           <StatusNotice>Cargando información de tus viajes...</StatusNotice>
-        ) : registros.length === 0 ? (
+        ) : registrosFiltrados.length === 0 ? (
           <EmptyNotice>
             <MdWaterDrop className="empty-ico" />
             <h4>Aún no tienes recargas registradas</h4>
             <p>Haz clic en el botón de abajo para registrar tu primera recarga de agua en el pozo.</p>
             <BotonRecargaHero onClick={() => setModalRecargaAbierto(true)} style={{ marginTop: "12px" }}>
-              <MdWaterDrop className="icon" /> Registrar Mi Primera Recarga
+              <MdWaterDrop className="icon" /> Registrar Recarga de Agua
             </BotonRecargaHero>
           </EmptyNotice>
         ) : (
@@ -268,7 +354,7 @@ export function DashboardCamionero() {
                 </tr>
               </thead>
               <tbody>
-                {registros.map((item) => {
+                {registrosFiltrados.map((item) => {
                   const esPagado = item.estatus === "pagado";
                   return (
                     <tr key={item.id}>
@@ -281,15 +367,15 @@ export function DashboardCamionero() {
 
                       <td>
                         <TruckBadge>
-                          <strong>{item.camiones?.placa || miCamion?.placa || "S/P"}</strong>
-                          <span>{item.camiones?.chofer || miCamion?.chofer || user?.name}</span>
+                          <strong>{item.camiones?.placa || "S/P"}</strong>
+                          <span>{item.camiones?.modelo || "Cisterna"}</span>
                         </TruckBadge>
                       </td>
 
                       <td>
                         <CapBadge>
-                          💧 {item.camiones?.capacidad || miCamion?.capacidad
-                            ? `${(item.camiones?.capacidad || miCamion?.capacidad).toLocaleString()} Lts`
+                          💧 {item.camiones?.capacidad
+                            ? `${Number(item.camiones.capacidad).toLocaleString()} Lts`
                             : "N/A"}
                         </CapBadge>
                       </td>
@@ -318,7 +404,7 @@ export function DashboardCamionero() {
                             onClick={() =>
                               setFotoModal({
                                 url: item.url_foto,
-                                titulo: `Cisterna: ${item.camiones?.placa || miCamion?.placa || ""}`,
+                                titulo: `Cisterna: ${item.camiones?.placa || ""}`,
                               })
                             }
                             title="Ver foto de la recarga"
@@ -401,32 +487,31 @@ const HeroCard = styled.div`
 
 const HeroGlow = styled.div`
   position: absolute;
-  top: -80px;
-  right: -80px;
-  width: 250px;
-  height: 250px;
-  background: radial-gradient(circle, rgba(0, 195, 255, 0.25) 0%, rgba(0, 114, 255, 0) 70%);
+  top: -50%;
+  left: -20%;
+  width: 500px;
+  height: 500px;
+  background: radial-gradient(circle, rgba(0, 195, 255, 0.15) 0%, transparent 70%);
   pointer-events: none;
 `;
 
 const HeroContent = styled.div`
-  max-width: 640px;
+  position: relative;
   z-index: 1;
+  max-width: 600px;
 
   .badge-chofer {
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    padding: 4px 12px;
     background: rgba(0, 195, 255, 0.15);
-    border: 1px solid rgba(0, 195, 255, 0.4);
-    border-radius: 20px;
-    color: #38bdf8;
+    border: 1px solid rgba(0, 195, 255, 0.3);
+    color: #00c3ff;
     font-size: 12px;
     font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    margin-bottom: 10px;
+    padding: 4px 12px;
+    border-radius: 20px;
+    margin-bottom: 12px;
   }
 
   h2 {
@@ -437,8 +522,8 @@ const HeroContent = styled.div`
   }
 
   .hero-desc {
-    color: #94a3b8;
     font-size: 14px;
+    color: #94a3b8;
     line-height: 1.5;
     margin: 0 0 20px 0;
   }
@@ -452,19 +537,19 @@ const HeroBtnRow = styled.div`
 `;
 
 const BotonRecargaHero = styled.button`
-  display: inline-flex;
+  display: flex;
   align-items: center;
   gap: 10px;
   background: linear-gradient(135deg, #00c3ff 0%, #0072ff 100%);
   color: #ffffff;
+  font-size: 14px;
+  font-weight: 700;
   border: none;
-  padding: 13px 24px;
   border-radius: 12px;
-  font-size: 15px;
-  font-weight: 800;
+  padding: 12px 22px;
   cursor: pointer;
-  box-shadow: 0 6px 25px rgba(0, 195, 255, 0.45);
-  transition: all 0.2s ease;
+  box-shadow: 0 4px 20px rgba(0, 195, 255, 0.4);
+  transition: all 0.25s ease;
 
   .icon {
     font-size: 20px;
@@ -472,68 +557,70 @@ const BotonRecargaHero = styled.button`
 
   &:hover {
     transform: translateY(-2px);
-    box-shadow: 0 8px 30px rgba(0, 195, 255, 0.6);
+    box-shadow: 0 8px 28px rgba(0, 195, 255, 0.6);
   }
 `;
 
 const LinkDeudas = styled(Link)`
-  display: inline-flex;
+  display: flex;
   align-items: center;
   gap: 8px;
-  background: rgba(30, 41, 59, 0.8);
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  color: #f1f5f9;
-  padding: 12px 20px;
-  border-radius: 12px;
-  font-size: 14px;
+  background: rgba(234, 179, 8, 0.15);
+  border: 1px solid rgba(234, 179, 8, 0.35);
+  color: #fef08a;
+  font-size: 13px;
   font-weight: 600;
   text-decoration: none;
-  transition: all 0.2s ease;
+  padding: 11px 18px;
+  border-radius: 12px;
+  transition: all 0.2s;
 
   &:hover {
-    background: rgba(0, 195, 255, 0.12);
-    border-color: #00c3ff;
-    color: #38bdf8;
+    background: rgba(234, 179, 8, 0.25);
+    color: #ffffff;
   }
 `;
 
 const TruckSummaryCard = styled.div`
-  background: rgba(15, 23, 42, 0.7);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 16px;
-  padding: 18px 24px;
-  min-width: 220px;
+  position: relative;
   z-index: 1;
+  background: rgba(21, 28, 45, 0.85);
+  border: 1px solid rgba(0, 195, 255, 0.4);
+  border-radius: 16px;
+  padding: 20px 24px;
+  min-width: 250px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
 
   .truck-header {
     display: flex;
     align-items: center;
     gap: 8px;
-    color: #94a3b8;
     font-size: 12px;
     font-weight: 600;
+    color: #94a3b8;
     text-transform: uppercase;
-    margin-bottom: 6px;
+    letter-spacing: 0.5px;
+    margin-bottom: 8px;
 
     .gauge-icon {
-      color: #38bdf8;
+      color: #00c3ff;
       font-size: 16px;
     }
   }
 
   .placa-title {
-    font-size: 24px;
-    font-weight: 800;
-    color: #38bdf8;
-    letter-spacing: 1px;
-    margin-bottom: 6px;
+    font-size: 28px;
+    font-weight: 900;
+    color: #00c3ff;
+    letter-spacing: 2px;
+    margin-bottom: 12px;
   }
 
   .truck-specs {
     display: flex;
     flex-direction: column;
-    gap: 4px;
-    font-size: 12px;
+    gap: 6px;
+    font-size: 13px;
     color: #cbd5e1;
 
     strong {
@@ -542,54 +629,194 @@ const TruckSummaryCard = styled.div`
   }
 `;
 
+const FleetSummaryCard = styled.div`
+  position: relative;
+  z-index: 1;
+  background: rgba(21, 28, 45, 0.85);
+  border: 1px solid rgba(0, 195, 255, 0.4);
+  border-radius: 16px;
+  padding: 18px 20px;
+  min-width: 260px;
+  max-width: 380px;
+
+  .fleet-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    font-weight: 700;
+    color: #38bdf8;
+    text-transform: uppercase;
+    margin-bottom: 12px;
+
+    .fleet-icon {
+      font-size: 18px;
+    }
+  }
+
+  .fleet-units-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    max-height: 180px;
+    overflow-y: auto;
+  }
+
+  .unit-pill {
+    background: rgba(15, 23, 42, 0.8);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 10px;
+    padding: 8px 12px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+
+    .unit-plate {
+      background: rgba(0, 195, 255, 0.2);
+      color: #38bdf8;
+      font-weight: 800;
+      font-size: 12px;
+      padding: 2px 6px;
+      border-radius: 4px;
+    }
+
+    .unit-cap {
+      font-size: 12px;
+      color: #ffffff;
+    }
+
+    .unit-mod {
+      font-size: 11px;
+      color: #94a3b8;
+    }
+  }
+`;
+
+const FilterFleetBar = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  background: rgba(21, 28, 45, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 14px;
+  padding: 10px 16px;
+
+  .filter-title {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    color: #94a3b8;
+    font-weight: 600;
+  }
+
+  .pills-row {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+`;
+
+const FleetFilterPill = styled.button`
+  background: ${(props) =>
+    props.$active ? "linear-gradient(135deg, #00c3ff 0%, #0072ff 100%)" : "rgba(15, 23, 42, 0.8)"};
+  color: ${(props) => (props.$active ? "#ffffff" : "#cbd5e1")};
+  border: 1px solid ${(props) => (props.$active ? "#00c3ff" : "rgba(255, 255, 255, 0.1)")};
+  padding: 6px 14px;
+  border-radius: 10px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+
+  &:hover {
+    color: #ffffff;
+    border-color: #00c3ff;
+  }
+`;
+
+const AvisoSinCamion = styled.div`
+  background: rgba(234, 179, 8, 0.12);
+  border: 1px solid rgba(234, 179, 8, 0.35);
+  border-radius: 16px;
+  padding: 18px 24px;
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+
+  .aviso-icon {
+    font-size: 26px;
+    flex-shrink: 0;
+  }
+
+  .aviso-body {
+    h4 {
+      color: #fef08a;
+      font-size: 15px;
+      font-weight: 700;
+      margin: 0 0 6px 0;
+    }
+
+    p {
+      color: #cbd5e1;
+      font-size: 13px;
+      margin: 0;
+      line-height: 1.5;
+    }
+  }
+`;
+
 const CardsGrid = styled.div`
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 16px;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 18px;
 `;
 
 const CardItem = styled.div`
+  background: rgba(21, 28, 45, 0.7);
+  backdrop-filter: blur(12px);
+  border: 1px solid
+    ${(props) =>
+      props.$color === "cyan"
+        ? "rgba(0, 195, 255, 0.25)"
+        : props.$color === "blue"
+        ? "rgba(59, 130, 246, 0.25)"
+        : props.$color === "green"
+        ? "rgba(34, 197, 94, 0.25)"
+        : "rgba(234, 179, 8, 0.25)"};
+  border-radius: 18px;
+  padding: 22px;
   display: flex;
   align-items: center;
-  gap: 16px;
-  background: rgba(15, 23, 42, 0.7);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 16px;
-  padding: 18px 20px;
-  transition: transform 0.2s ease, border-color 0.2s ease;
-
-  &:hover {
-    transform: translateY(-2px);
-    border-color: rgba(0, 195, 255, 0.3);
-  }
+  gap: 18px;
 
   .icon-wrap {
-    width: 48px;
-    height: 48px;
+    width: 50px;
+    height: 50px;
     border-radius: 14px;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 24px;
+    font-size: 26px;
     flex-shrink: 0;
-
-    background: ${({ $color }) =>
-      $color === "cyan"
+    background: ${(props) =>
+      props.$color === "cyan"
         ? "rgba(0, 195, 255, 0.15)"
-        : $color === "blue"
+        : props.$color === "blue"
         ? "rgba(59, 130, 246, 0.15)"
-        : $color === "green"
-        ? "rgba(16, 185, 129, 0.15)"
-        : "rgba(245, 158, 11, 0.15)"};
-
-    color: ${({ $color }) =>
-      $color === "cyan"
+        : props.$color === "green"
+        ? "rgba(34, 197, 94, 0.15)"
+        : "rgba(234, 179, 8, 0.15)"};
+    color: ${(props) =>
+      props.$color === "cyan"
         ? "#00c3ff"
-        : $color === "blue"
-        ? "#60a5fa"
-        : $color === "green"
-        ? "#34d399"
-        : "#fbbf24"};
+        : props.$color === "blue"
+        ? "#3b82f6"
+        : props.$color === "green"
+        ? "#22c55e"
+        : "#eab308"};
   }
 
   .info {
@@ -597,15 +824,13 @@ const CardItem = styled.div`
     flex-direction: column;
 
     .lbl {
-      font-size: 11px;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
+      font-size: 12px;
       color: #94a3b8;
-      font-weight: 700;
+      font-weight: 500;
     }
 
     h3 {
-      font-size: 20px;
+      font-size: 22px;
       font-weight: 800;
       color: #ffffff;
       margin: 4px 0 2px 0;
@@ -619,49 +844,48 @@ const CardItem = styled.div`
 `;
 
 const TableSection = styled.div`
-  background: rgba(15, 23, 42, 0.7);
+  background: rgba(21, 28, 45, 0.7);
+  backdrop-filter: blur(12px);
   border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 18px;
-  padding: 22px;
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
+  border-radius: 20px;
+  padding: 26px;
 `;
 
 const TableTopBar = styled.div`
   display: flex;
   justify-content: space-between;
   align-items: center;
+  margin-bottom: 20px;
   flex-wrap: wrap;
-  gap: 12px;
+  gap: 14px;
 
   h3 {
-    margin: 0 0 4px 0;
     font-size: 18px;
     font-weight: 700;
     color: #ffffff;
+    margin: 0 0 4px 0;
   }
 
   p {
-    margin: 0;
-    font-size: 12px;
+    font-size: 13px;
     color: #94a3b8;
+    margin: 0;
   }
 `;
 
 const BotonSecundarioRecarga = styled.button`
-  display: inline-flex;
+  display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   background: rgba(0, 195, 255, 0.15);
   border: 1px solid rgba(0, 195, 255, 0.35);
-  color: #38bdf8;
-  padding: 8px 14px;
-  border-radius: 10px;
+  color: #00c3ff;
   font-size: 13px;
-  font-weight: 700;
+  font-weight: 600;
+  padding: 10px 16px;
+  border-radius: 10px;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all 0.2s;
 
   &:hover {
     background: rgba(0, 195, 255, 0.25);
@@ -670,10 +894,7 @@ const BotonSecundarioRecarga = styled.button`
 `;
 
 const TableContainer = styled.div`
-  width: 100%;
   overflow-x: auto;
-  border-radius: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.06);
 `;
 
 const Table = styled.table`
@@ -682,30 +903,25 @@ const Table = styled.table`
   text-align: left;
   font-size: 13px;
 
-  thead th {
-    background: rgba(30, 41, 59, 0.6);
+  th {
+    padding: 14px 16px;
     color: #94a3b8;
     font-weight: 600;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    background: rgba(15, 23, 42, 0.4);
     text-transform: uppercase;
     font-size: 11px;
     letter-spacing: 0.5px;
-    padding: 12px 14px;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-    white-space: nowrap;
   }
 
-  tbody tr {
-    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-
-    &:hover {
-      background: rgba(255, 255, 255, 0.02);
-    }
-  }
-
-  tbody td {
-    padding: 12px 14px;
+  td {
+    padding: 16px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.04);
     color: #e2e8f0;
-    vertical-align: middle;
+  }
+
+  tbody tr:hover {
+    background: rgba(255, 255, 255, 0.02);
   }
 `;
 
@@ -715,11 +931,10 @@ const DateTimeBadge = styled.div`
   gap: 6px;
   color: #cbd5e1;
   font-size: 12px;
-  font-family: monospace;
 
   .ico {
-    color: #38bdf8;
-    font-size: 15px;
+    color: #00c3ff;
+    font-size: 14px;
   }
 `;
 
@@ -728,8 +943,9 @@ const TruckBadge = styled.div`
   flex-direction: column;
 
   strong {
-    color: #38bdf8;
+    color: #00c3ff;
     font-size: 13px;
+    font-weight: 700;
   }
 
   span {
@@ -739,121 +955,124 @@ const TruckBadge = styled.div`
 `;
 
 const CapBadge = styled.span`
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 3px 8px;
   background: rgba(0, 195, 255, 0.1);
-  border: 1px solid rgba(0, 195, 255, 0.25);
-  border-radius: 6px;
   color: #38bdf8;
+  padding: 4px 8px;
+  border-radius: 6px;
   font-weight: 600;
   font-size: 12px;
 `;
 
 const MontoTxt = styled.span`
+  font-size: 15px;
   font-weight: 700;
-  color: #10b981;
-  font-size: 13px;
+  color: #ffffff;
 `;
 
 const StatusPill = styled.div`
   display: inline-flex;
   flex-direction: column;
   gap: 2px;
-  padding: 4px 8px;
-  border-radius: 6px;
-  font-size: 11px;
+  padding: 6px 12px;
+  border-radius: 8px;
+  font-size: 12px;
   font-weight: 600;
-
-  background: ${({ $type }) =>
-    $type === "paid" ? "rgba(16, 185, 129, 0.15)" : "rgba(245, 158, 11, 0.15)"};
+  background: ${(props) =>
+    props.$type === "paid" ? "rgba(34, 197, 94, 0.15)" : "rgba(234, 179, 8, 0.15)"};
+  color: ${(props) => (props.$type === "paid" ? "#22c55e" : "#eab308")};
   border: 1px solid
-    ${({ $type }) =>
-      $type === "paid" ? "rgba(16, 185, 129, 0.3)" : "rgba(245, 158, 11, 0.3)"};
-  color: ${({ $type }) => ($type === "paid" ? "#34d399" : "#fbbf24")};
+    ${(props) => (props.$type === "paid" ? "rgba(34, 197, 94, 0.3)" : "rgba(234, 179, 8, 0.3)")};
 
   .sub-ref {
     font-size: 10px;
-    color: #94a3b8;
+    opacity: 0.85;
   }
 `;
 
 const FotoBtn = styled.button`
   position: relative;
-  width: 40px;
-  height: 40px;
-  border-radius: 8px;
-  overflow: hidden;
+  background: transparent;
   border: 1px solid rgba(255, 255, 255, 0.15);
-  background: #000;
+  border-radius: 8px;
+  padding: 2px;
   cursor: pointer;
-  padding: 0;
+  width: 44px;
+  height: 44px;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 
   img {
     width: 100%;
     height: 100%;
     object-fit: cover;
+    border-radius: 6px;
   }
 
   .lens {
     position: absolute;
-    bottom: 2px;
-    right: 2px;
-    color: #38bdf8;
-    background: rgba(0, 0, 0, 0.7);
-    border-radius: 4px;
-    font-size: 11px;
+    color: #ffffff;
+    font-size: 18px;
+    background: rgba(0, 0, 0, 0.4);
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    transition: opacity 0.2s;
+  }
+
+  &:hover .lens {
+    opacity: 1;
   }
 `;
 
 const NotaTxt = styled.div`
   display: flex;
   align-items: center;
-  gap: 4px;
-  color: #c084fc;
-  font-size: 11px;
-  max-width: 180px;
-
-  span {
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
+  gap: 6px;
+  font-size: 12px;
+  color: #cbd5e1;
+  max-width: 200px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 `;
 
 const StatusNotice = styled.div`
   text-align: center;
   padding: 40px 20px;
   color: #94a3b8;
-  font-size: 13px;
+  font-size: 14px;
 `;
 
 const EmptyNotice = styled.div`
+  text-align: center;
+  padding: 50px 20px;
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
-  padding: 50px 20px;
-  text-align: center;
+  gap: 8px;
 
   .empty-ico {
-    font-size: 46px;
-    color: #38bdf8;
-    opacity: 0.4;
-    margin-bottom: 10px;
+    font-size: 48px;
+    color: rgba(0, 195, 255, 0.3);
+    margin-bottom: 8px;
   }
 
   h4 {
-    margin: 0 0 6px 0;
-    font-size: 17px;
     color: #ffffff;
+    font-size: 18px;
+    font-weight: 700;
+    margin: 0;
   }
 
   p {
-    max-width: 400px;
     color: #94a3b8;
     font-size: 13px;
+    max-width: 450px;
     margin: 0;
   }
 `;
@@ -861,94 +1080,51 @@ const EmptyNotice = styled.div`
 const Overlay = styled.div`
   position: fixed;
   inset: 0;
-  background: rgba(4, 9, 20, 0.85);
+  background: rgba(0, 0, 0, 0.8);
   backdrop-filter: blur(8px);
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 3000;
-  padding: 16px;
+  z-index: 1000;
+  padding: 20px;
 `;
 
 const LightboxCard = styled.div`
-  background: #0f172a;
-  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: #111827;
+  border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 16px;
-  overflow: hidden;
   max-width: 600px;
   width: 100%;
-  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.8);
+  overflow: hidden;
 
   .head {
     display: flex;
-    align-items: center;
     justify-content: space-between;
+    align-items: center;
     padding: 14px 18px;
-    background: rgba(30, 41, 59, 0.8);
     border-bottom: 1px solid rgba(255, 255, 255, 0.08);
 
     h4 {
-      margin: 0;
-      font-size: 14px;
       color: #ffffff;
+      font-size: 14px;
+      font-weight: 700;
+      margin: 0;
     }
 
     button {
       background: transparent;
       border: none;
       color: #94a3b8;
-      cursor: pointer;
       font-size: 20px;
-      display: flex;
-      align-items: center;
-
-      &:hover {
-        color: #ffffff;
-      }
+      cursor: pointer;
     }
   }
 
   img {
     width: 100%;
-    max-height: 75vh;
+    max-height: 500px;
     object-fit: contain;
     display: block;
     background: #000;
-  }
-`;
-
-const AvisoSinCamion = styled.div`
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  background: rgba(245, 158, 11, 0.1);
-  border: 1px solid rgba(245, 158, 11, 0.35);
-  border-radius: 16px;
-  padding: 18px 22px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
-
-  .aviso-icon {
-    font-size: 32px;
-    flex-shrink: 0;
-  }
-
-  .aviso-body {
-    h4 {
-      margin: 0 0 4px 0;
-      color: #fbbf24;
-      font-size: 16px;
-      font-weight: 700;
-    }
-
-    p {
-      margin: 0;
-      font-size: 13px;
-      color: #e2e8f0;
-      line-height: 1.5;
-
-      strong {
-        color: #38bdf8;
-      }
-    }
   }
 `;

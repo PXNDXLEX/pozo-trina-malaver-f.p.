@@ -63,17 +63,47 @@ export function ModalRegistrarRecarga({ isOpen, onClose, onRecargaExitosa }) {
   const cargarCamiones = async () => {
     setCargandoCamiones(true);
     try {
-      // Si el usuario es camionero, filtrar estrictamente su camión asignado
+      // Si el usuario es camionero, filtrar estrictamente sus camiones asignados (1 o varios)
       if (user?.role === "camionero" && user?.id) {
+        let trucks = [];
+
         const { data: misCamiones } = await supabase
           .from("camiones")
           .select("id, placa, chofer, capacidad, modelo, perfil_id")
           .eq("perfil_id", user.id);
 
-        if (misCamiones && misCamiones.length > 0) {
-          setCamiones(misCamiones);
-          setCamionSeleccionadoId(misCamiones[0].id);
-          setBusquedaCamion(`${misCamiones[0].placa} — ${misCamiones[0].chofer}`);
+        if (misCamiones) trucks.push(...misCamiones);
+
+        try {
+          const { data: cRow } = await supabase
+            .from("camioneros")
+            .select("id")
+            .eq("perfil_id", user.id)
+            .maybeSingle();
+
+          if (cRow?.id) {
+            const { data: trucksCam } = await supabase
+              .from("camiones")
+              .select("id, placa, chofer, capacidad, modelo, perfil_id")
+              .eq("camionero_id", cRow.id);
+
+            if (trucksCam) trucks.push(...trucksCam);
+          }
+        } catch (errCam) {
+          // ignore if table doesn't exist
+        }
+
+        // Deduplicar unidades por id
+        const trucksMap = new Map();
+        trucks.forEach((t) => trucksMap.set(t.id, t));
+        const finalTrucks = Array.from(trucksMap.values());
+
+        if (finalTrucks && finalTrucks.length > 0) {
+          setCamiones(finalTrucks);
+          if (!camionSeleccionadoId || !finalTrucks.some((t) => t.id === camionSeleccionadoId)) {
+            setCamionSeleccionadoId(finalTrucks[0].id);
+            setBusquedaCamion(`${finalTrucks[0].placa} — ${finalTrucks[0].chofer}`);
+          }
           return;
         } else {
           // Si el camionero NO tiene camión asignado, no mostrar camiones ajenos
@@ -323,7 +353,7 @@ export function ModalRegistrarRecarga({ isOpen, onClose, onRecargaExitosa }) {
                       disabled={user?.role === "camionero" && camiones.length === 1}
                       required={!camionSeleccionadoId}
                     />
-                    {busquedaCamion && user?.role !== "camionero" && (
+                    {busquedaCamion && (user?.role !== "camionero" || camiones.length > 1) && (
                       <ClearBtn
                         type="button"
                         onClick={() => {
@@ -339,7 +369,7 @@ export function ModalRegistrarRecarga({ isOpen, onClose, onRecargaExitosa }) {
                   </SearchBoxWrapper>
 
                   {/* LISTA DINÁMICA FLOTANTE DE RESULTADOS */}
-                  {mostrarMenuCamiones && user?.role !== "camionero" && (
+                  {mostrarMenuCamiones && (user?.role !== "camionero" || camiones.length > 1) && (
                     <DynamicTruckDropdown>
                       {cargandoCamiones ? (
                         <DropdownItemNotice>Cargando lista de camiones...</DropdownItemNotice>
@@ -383,7 +413,7 @@ export function ModalRegistrarRecarga({ isOpen, onClose, onRecargaExitosa }) {
                       <span><strong>Chofer:</strong> {camionActual.chofer}</span>
                       <span><strong>Capacidad:</strong> {camionActual.capacidad?.toLocaleString()} Lts</span>
                       {camionActual.modelo && <span><strong>Modelo:</strong> {camionActual.modelo}</span>}
-                      {user?.role !== "camionero" && (
+                      {(user?.role !== "camionero" || camiones.length > 1) && (
                         <ChangeTruckBtn
                           type="button"
                           onClick={() => {
@@ -392,7 +422,7 @@ export function ModalRegistrarRecarga({ isOpen, onClose, onRecargaExitosa }) {
                             setMostrarMenuCamiones(true);
                           }}
                         >
-                          Cambiar
+                          Cambiar Unidad
                         </ChangeTruckBtn>
                       )}
                     </CamionInfoPill>

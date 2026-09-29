@@ -1,1538 +1,1308 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import styled from "styled-components";
 import { supabase } from "../supabase/supabase.config";
 import { useAuthStore } from "../store/AuthStore";
-import { ModalRegistrarRecarga } from "./ModalRegistrarRecarga";
-import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-  PieChart,
-  Pie,
-  Cell,
-  Legend
-} from "recharts";
 import {
   MdWaterDrop,
   MdLocalShipping,
+  MdAttachMoney,
+  MdPhotoCamera,
+  MdPayments,
+  MdReceipt,
   MdCheckCircle,
   MdHourglassEmpty,
+  MdDeleteOutline,
   MdEditNote,
-  MdCalendarToday,
   MdSearch,
-  MdPhotoCamera,
-  MdClose,
-  MdSave,
-  MdFilterList,
-  MdInfoOutline,
+  MdOutlineAccessTime,
   MdPerson,
-  MdOutlineAccessTime
+  MdDoneAll,
 } from "react-icons/md";
 
 export function DashboardRegistrador() {
   const user = useAuthStore((state) => state.user);
 
-  const [registros, setRegistros] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [filtroDias, setFiltroDias] = useState(30); // 30 días por defecto para el registrador
-  const [busqueda, setBusqueda] = useState("");
-  const [filtroEstatus, setFiltroEstatus] = useState("todos"); // "todos" | "pagado" | "pendiente" | "con_nota"
+  // Lista de camiones
+  const [camiones, setCamiones] = useState([]);
+  const [cargandoCamiones, setCargandoCamiones] = useState(false);
+  const [camionSeleccionadoId, setCamionSeleccionadoId] = useState("");
+  const [busquedaCamion, setBusquedaCamion] = useState("");
+  const [mostrarMenuCamiones, setMostrarMenuCamiones] = useState(false);
+  const comboboxRef = useRef(null);
 
-  // Modal de nueva recarga
-  const [modalRecargaAbierto, setModalRecargaAbierto] = useState(false);
+  // Campos del formulario
+  const [monto, setMonto] = useState("");
+  const [nota, setNota] = useState("");
 
-  // Modal para agregar / editar nota
-  const [modalNotaAbierto, setModalNotaAbierto] = useState(false);
-  const [recargaParaNota, setRecargaParaNota] = useState(null);
-  const [textoNota, setTextoNota] = useState("");
-  const [guardandoNota, setGuardandoNota] = useState(false);
+  // Fotos
+  const [fotoCamion, setFotoCamion] = useState(null);
+  const [previewCamion, setPreviewCamion] = useState(null);
+  const [fotoComprobante, setFotoComprobante] = useState(null);
+  const [previewComprobante, setPreviewComprobante] = useState(null);
 
-  // Modal visor de fotos
-  const [fotoModal, setFotoModal] = useState(null);
+  // Tipo: pagado vs deuda
+  const [tipoRegistro, setTipoRegistro] = useState("pagado"); // "pagado" | "deuda"
+  const [metodoPago, setMetodoPago] = useState("Transferencia");
+  const [referencia, setReferencia] = useState("");
 
-  // Bandera de columnas
-  const [columnaNotaDisponible, setColumnaNotaDisponible] = useState(true);
+  const [guardando, setGuardando] = useState(false);
+  const [ultimoRegistro, setUltimoRegistro] = useState(null);
+  const [mensajeExito, setMensajeExito] = useState("");
 
   useEffect(() => {
-    cargarMisRegistros();
-  }, [filtroDias]);
+    cargarCamiones();
+    cargarUltimoRegistro();
+  }, []);
 
-  const cargarMisRegistros = async () => {
-    setLoading(true);
+  // Cierre del dropdown de búsqueda al hacer clic fuera
+  useEffect(() => {
+    function handleClickOutside(e) {
+      if (comboboxRef.current && !comboboxRef.current.contains(e.target)) {
+        setMostrarMenuCamiones(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const cargarCamiones = async () => {
+    setCargandoCamiones(true);
     try {
-      // 1. Intento principal: consultar con usuario_id y nota
+      const { data, error } = await supabase
+        .from("camiones")
+        .select("id, placa, chofer, capacidad, modelo")
+        .order("chofer", { ascending: true });
+
+      if (error) throw error;
+      setCamiones(data || []);
+    } catch (err) {
+      console.error("Error al cargar camiones:", err.message);
+    } finally {
+      setCargandoCamiones(false);
+    }
+  };
+
+  const cargarUltimoRegistro = async () => {
+    try {
       let query = supabase
         .from("registros_carga")
         .select(`
           id,
-          camion_id,
           monto,
           metodo,
           referencia,
           fecha_carga,
-          url_foto,
           estatus,
-          usuario_id,
-          nota,
-          camiones ( id, chofer, placa, capacidad, modelo )
+          camiones ( placa, chofer, capacidad )
         `)
-        .order("fecha_carga", { ascending: false });
+        .order("fecha_carga", { ascending: false })
+        .limit(1);
 
-      // Filtrar por rango de fecha
-      if (filtroDias !== 3650) {
-        const fechaLimite = new Date();
-        fechaLimite.setDate(fechaLimite.getDate() - filtroDias);
-        query = query.gte("fecha_carga", fechaLimite.toISOString());
-      }
-
-      // Si el usuario tiene ID, intentamos filtrar por su usuario_id
       if (user?.id) {
         query = query.eq("usuario_id", user.id);
       }
 
       const { data, error } = await query;
-
-      if (!error) {
-        // Mostrar estrictamente solo los registros del usuario registrado
-        setRegistros(data || []);
-        setColumnaNotaDisponible(true);
-        return;
+      if (!error && data && data.length > 0) {
+        setUltimoRegistro(data[0]);
       }
-
-      console.warn("Fallo consulta con columnas nuevas (usuario_id/nota):", error.message);
-
-      // Si la columna usuario_id aún no existe en Supabase, inicializar vacío
-      setRegistros([]);
-      setColumnaNotaDisponible(false);
     } catch (err) {
-      console.error("Error al cargar registros del registrador:", err);
-    } finally {
-      setLoading(false);
+      console.warn("No se pudo cargar el último registro:", err);
     }
   };
 
-  // Abrir modal de nota
-  const handleAbrirNota = (recarga) => {
-    setRecargaParaNota(recarga);
-    setTextoNota(recarga.nota || "");
-    setModalNotaAbierto(true);
+  const limpiarCampos = () => {
+    setCamionSeleccionadoId("");
+    setBusquedaCamion("");
+    setMostrarMenuCamiones(false);
+    setMonto("");
+    setNota("");
+    setFotoCamion(null);
+    setPreviewCamion(null);
+    setFotoComprobante(null);
+    setPreviewComprobante(null);
+    setTipoRegistro("pagado");
+    setMetodoPago("Transferencia");
+    setReferencia("");
   };
 
-  // Guardar o actualizar la nota
-  const handleGuardarNota = async (e) => {
-    e.preventDefault();
-    if (!recargaParaNota) return;
+  const handleFotoCamionChange = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      setFotoCamion(file);
+      setPreviewCamion(URL.createObjectURL(file));
+    }
+  };
 
-    setGuardandoNota(true);
-    const notaLimpia = textoNota.trim() || null;
+  const handleFotoComprobanteChange = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      setFotoComprobante(file);
+      setPreviewComprobante(URL.createObjectURL(file));
+    }
+  };
+
+  const subirFoto = async (file, carpeta) => {
+    if (!file) return null;
+    const fileExt = file.name.split(".").pop();
+    const fileName = `${carpeta}_${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`;
+    const filePath = `${carpeta}/${fileName}`;
+
+    const { error: uploadError } = await supabase.storage
+      .from("comprobantes")
+      .upload(filePath, file);
+
+    if (uploadError) {
+      console.warn(`Error al subir imagen a ${carpeta}:`, uploadError.message);
+      return null;
+    }
+
+    const { data } = supabase.storage.from("comprobantes").getPublicUrl(filePath);
+    return data?.publicUrl || null;
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+
+    if (!camionSeleccionadoId) {
+      alert("⚠️ Por favor selecciona el camión cisterna de la lista.");
+      return;
+    }
+
+    const montoNum = parseFloat(monto);
+    if (!monto || isNaN(montoNum) || montoNum <= 0) {
+      alert("⚠️ Por favor ingresa un monto válido mayor a 0.");
+      return;
+    }
+
+    if (tipoRegistro === "pagado" && metodoPago !== "Efectivo" && !referencia.trim()) {
+      alert("⚠️ La referencia bancaria es obligatoria para pagos por Transferencia, Pago Móvil o Punto.");
+      return;
+    }
+
+    setGuardando(true);
+    setMensajeExito("");
 
     try {
-      const { error } = await supabase
-        .from("registros_carga")
-        .update({ nota: notaLimpia })
-        .eq("id", recargaParaNota.id);
+      let urlFotoCamion = null;
+      let urlComprobante = null;
 
-      if (error) {
-        if (error.code === "42703" || error.code === "PGRST204" || error.message?.includes("nota")) {
-          alert(
-            "⚠️ La columna 'nota' aún no existe en la base de datos Supabase.\n\nPor favor, ejecuta en el SQL Editor de Supabase:\nALTER TABLE registros_carga ADD COLUMN IF NOT EXISTS nota TEXT;"
-          );
-        } else {
-          alert(`Error al guardar la nota: ${error.message}`);
-        }
-        return;
+      if (fotoCamion) {
+        urlFotoCamion = await subirFoto(fotoCamion, "camiones");
       }
 
-      // Actualizar estado local inmediatamente para reflejo instantáneo
-      setRegistros((prev) =>
-        prev.map((r) => (r.id === recargaParaNota.id ? { ...r, nota: notaLimpia } : r))
-      );
+      if (tipoRegistro === "pagado" && fotoComprobante) {
+        urlComprobante = await subirFoto(fotoComprobante, "pagos");
+      }
 
-      setModalNotaAbierto(false);
-      setRecargaParaNota(null);
+      const fechaActual = new Date().toISOString();
+      const esPagado = tipoRegistro === "pagado";
+      const estatusFinal = esPagado ? "pagado" : "pendiente";
+      const metodoFinal = esPagado ? metodoPago : "Deuda";
+      const referenciaFinal = esPagado && metodoPago !== "Efectivo" ? referencia.trim() : null;
+
+      const registroPayload = {
+        camion_id: camionSeleccionadoId,
+        monto: montoNum,
+        metodo: metodoFinal,
+        referencia: referenciaFinal,
+        fecha_carga: fechaActual,
+        url_foto: urlFotoCamion,
+        estatus: estatusFinal,
+      };
+
+      const payloadExtendido = { ...registroPayload };
+      if (urlComprobante) payloadExtendido.url_comprobante = urlComprobante;
+      if (user?.id) payloadExtendido.usuario_id = user.id;
+      if (nota.trim()) payloadExtendido.nota = nota.trim();
+
+      // Intento con campos extendidos
+      let { data: nuevoReg, error: insertError } = await supabase
+        .from("registros_carga")
+        .insert([payloadExtendido])
+        .select(`
+          id,
+          monto,
+          metodo,
+          referencia,
+          fecha_carga,
+          estatus,
+          camiones ( placa, chofer, capacidad )
+        `)
+        .single();
+
+      if (insertError) {
+        console.warn("Reintentando con payload base:", insertError.message);
+        const { data: fallbackReg, error: errFallback } = await supabase
+          .from("registros_carga")
+          .insert([registroPayload])
+          .select(`
+            id,
+            monto,
+            metodo,
+            referencia,
+            fecha_carga,
+            estatus,
+            camiones ( placa, chofer, capacidad )
+          `)
+          .single();
+
+        insertError = errFallback;
+        nuevoReg = fallbackReg;
+      }
+
+      if (insertError) throw insertError;
+
+      const camionObj = camiones.find((c) => String(c.id) === String(camionSeleccionadoId));
+      const msg = esPagado
+        ? `✅ ¡Recarga de $${montoNum} (${camionObj?.placa || "Camión"}) registrada como PAGADA!`
+        : `⏳ ¡Recarga de $${montoNum} (${camionObj?.placa || "Camión"}) registrada como DEUDA en Cuentas por Cobrar!`;
+
+      setMensajeExito(msg);
+      if (nuevoReg) setUltimoRegistro(nuevoReg);
+
+      limpiarCampos();
+      window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (err) {
-      console.error("Error al actualizar nota:", err);
-      alert("Error al actualizar la nota.");
+      console.error("Error al registrar recarga:", err);
+      alert(`Error al registrar recarga: ${err.message || "Error desconocido"}`);
     } finally {
-      setGuardandoNota(false);
+      setGuardando(false);
     }
   };
 
-  // Filtrado de registros en memoria
-  const registrosFiltrados = useMemo(() => {
-    return registros.filter((item) => {
-      // Filtro por estatus
-      if (filtroEstatus === "pagado" && item.estatus !== "pagado") return false;
-      if (filtroEstatus === "pendiente" && item.estatus === "pagado") return false;
-      if (filtroEstatus === "con_nota" && (!item.nota || !item.nota.trim())) return false;
+  const camionesFiltrados = useMemo(() => {
+    if (!busquedaCamion.trim()) return camiones;
+    const q = busquedaCamion.toLowerCase().trim();
+    return camiones.filter(
+      (c) =>
+        c.placa?.toLowerCase().includes(q) ||
+        c.chofer?.toLowerCase().includes(q) ||
+        c.modelo?.toLowerCase().includes(q) ||
+        String(c.capacidad).includes(q)
+    );
+  }, [camiones, busquedaCamion]);
 
-      // Filtro por texto de búsqueda
-      if (!busqueda.trim()) return true;
-      const q = busqueda.toLowerCase().trim();
-      const placa = item.camiones?.placa?.toLowerCase() || "";
-      const chofer = item.camiones?.chofer?.toLowerCase() || "";
-      const nota = item.nota?.toLowerCase() || "";
-      const metodo = item.metodo?.toLowerCase() || "";
-      const ref = item.referencia?.toLowerCase() || "";
-
-      return (
-        placa.includes(q) ||
-        chofer.includes(q) ||
-        nota.includes(q) ||
-        metodo.includes(q) ||
-        ref.includes(q)
-      );
-    });
-  }, [registros, busqueda, filtroEstatus]);
-
-  // Cálculos de métricas operativas (Cero información financiera)
-  const metricasOperativas = useMemo(() => {
-    let totalViajes = registros.length;
-    let litrosTotales = 0;
-    let viajesPagados = 0;
-    let viajesDeuda = 0;
-    let viajesConNota = 0;
-
-    const capacidadMap = {};
-
-    registros.forEach((item) => {
-      const cap = Number(item.camiones?.capacidad) || 0;
-      litrosTotales += cap;
-
-      if (item.estatus === "pagado") {
-        viajesPagados++;
-      } else {
-        viajesDeuda++;
-      }
-
-      if (item.nota && item.nota.trim()) {
-        viajesConNota++;
-      }
-
-      // Distribución por capacidad
-      const etiquetaCap = cap > 0 ? `${(cap / 1000).toFixed(0)}k Lts` : "Sin dato";
-      capacidadMap[etiquetaCap] = (capacidadMap[etiquetaCap] || 0) + 1;
-    });
-
-    // Formato para gráfico de barras operativo (Viajes por Capacidad de Cisterna)
-    const dataCapacidad = Object.keys(capacidadMap).map((k) => ({
-      capacidad: k,
-      viajes: capacidadMap[k],
-    }));
-
-    // Formato para gráfico de pastel operativo (Pagados vs Deuda)
-    const dataEstado = [
-      { name: "Pagado al Contado", value: viajesPagados, color: "#10b981" },
-      { name: "Cargado a Deuda", value: viajesDeuda, color: "#f59e0b" },
-    ].filter((d) => d.value > 0);
-
-    return {
-      totalViajes,
-      litrosTotales,
-      viajesPagados,
-      viajesDeuda,
-      viajesConNota,
-      dataCapacidad,
-      dataEstado,
-    };
-  }, [registros]);
-
-  const formatearFechaHora = (fechaIso) => {
-    if (!fechaIso) return "--";
-    const d = new Date(fechaIso);
-    return d.toLocaleString("es-VE", {
-      day: "2-digit",
-      month: "2-digit",
-      year: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-      hour12: true,
-    });
-  };
+  const camionActual = camiones.find((c) => String(c.id) === String(camionSeleccionadoId));
 
   return (
     <Container>
-      {/* 🌟 ENCABEZADO PERSONALIZADO PARA REGISTRADOR */}
-      <HeaderSection>
-        <HeaderLeft>
-          <UserBadge>
-            <MdPerson className="badge-icon" /> Operador Registrador
-          </UserBadge>
-          <h2>Hola, {user?.name || "Operador"} 👋</h2>
-          <p className="subtitle">
-            Panel de control operativo de tus recargas despachadas y registro de novedades
-          </p>
-        </HeaderLeft>
+      {/* 🌟 BANNER DE BIENVENIDA AL REGISTRADOR */}
+      <TopTerminalHeader>
+        <div className="terminal-badge">
+          <MdWaterDrop /> Estación de Despacho de Agua
+        </div>
+        <h2>Bienvenido, {user?.name || "Operador"} 👋</h2>
+        <p>
+          Ingresa los datos de la unidad cisterna para procesar la recarga al instante o asignarla a cuentas por cobrar.
+        </p>
+      </TopTerminalHeader>
 
-        <HeaderActions>
-          <BotonNuevaRecarga onClick={() => setModalRecargaAbierto(true)}>
-            <MdWaterDrop /> Nueva Recarga
-          </BotonNuevaRecarga>
+      {/* MENSAJE DE ÉXITO PROMINENTE */}
+      {mensajeExito && (
+        <SuccessBanner>
+          <MdDoneAll className="success-icon" />
+          <div className="text">
+            <strong>¡Registro Completado con Éxito!</strong>
+            <p>{mensajeExito}</p>
+          </div>
+          <button type="button" onClick={() => setMensajeExito("")}>
+            ✕
+          </button>
+        </SuccessBanner>
+      )}
 
-          <FiltroDiasBox>
-            <MdCalendarToday />
-            <select value={filtroDias} onChange={(e) => setFiltroDias(Number(e.target.value))}>
-              <option value={1}>Hoy</option>
-              <option value={7}>Últimos 7 días</option>
-              <option value={15}>Últimas 2 semanas</option>
-              <option value={30}>Últimos 30 días</option>
-              <option value={3650}>Todo mi histórico</option>
-            </select>
-          </FiltroDiasBox>
-        </HeaderActions>
-      </HeaderSection>
-
-      {/* 💧 METRIC CARDS PURAMENTE OPERATIVAS (SIN GRAFICAS MONETARIAS) */}
-      <MetricsGrid>
-        <MetricCard $color="cyan">
-          <div className="icon-wrapper">
-            <MdLocalShipping />
-          </div>
-          <div className="content">
-            <span className="label">Total Recargas Realizadas</span>
-            <h3 className="value">{metricasOperativas.totalViajes} viajes</h3>
-            <span className="detail">Despachados por tu usuario</span>
-          </div>
-        </MetricCard>
-
-        <MetricCard $color="blue">
-          <div className="icon-wrapper">
-            <MdWaterDrop />
-          </div>
-          <div className="content">
-            <span className="label">Volumen de Agua Despachado</span>
-            <h3 className="value">
-              {metricasOperativas.litrosTotales.toLocaleString("es-ES")} Lts
-            </h3>
-            <span className="detail">Litros totales suministrados</span>
-          </div>
-        </MetricCard>
-
-        <MetricCard $color="green">
-          <div className="icon-wrapper">
-            <MdCheckCircle />
-          </div>
-          <div className="content">
-            <span className="label">Despachos Pagados</span>
-            <h3 className="value">{metricasOperativas.viajesPagados}</h3>
-            <span className="detail">Confirmados en taquilla</span>
-          </div>
-        </MetricCard>
-
-        <MetricCard $color="amber">
-          <div className="icon-wrapper">
-            <MdHourglassEmpty />
-          </div>
-          <div className="content">
-            <span className="label">Despachos a Crédito / Deuda</span>
-            <h3 className="value">{metricasOperativas.viajesDeuda}</h3>
-            <span className="detail">Enviados a Cuentas por Cobrar</span>
-          </div>
-        </MetricCard>
-
-        <MetricCard $color="purple">
-          <div className="icon-wrapper">
-            <MdEditNote />
-          </div>
-          <div className="content">
-            <span className="label">Con Notas de Revisión</span>
-            <h3 className="value">{metricasOperativas.viajesConNota}</h3>
-            <span className="detail">Para validar por administración</span>
-          </div>
-        </MetricCard>
-      </MetricsGrid>
-
-      {/* 📊 GRAFICAS OPERATIVAS (VOLUMEN Y ESTATUS DE DESPACHO) */}
-      <ChartsRow>
-        <ChartCard>
-          <ChartHeader>
-            <MdWaterDrop className="chart-icon cyan" />
-            <div>
-              <h4>Distribución Operativa por Capacidad de Cisterna</h4>
-              <p>Cantidad de viajes registrados según el tamaño del camión</p>
+      <GridWrapper>
+        {/* FORMULARIO PRINCIPAL DE DESPACHO */}
+        <DispatchCard onSubmit={handleSubmit}>
+          <CardHeader>
+            <div className="icon-header">
+              <MdLocalShipping />
             </div>
-          </ChartHeader>
-          <ChartBody>
-            {metricasOperativas.dataCapacidad.length === 0 ? (
-              <NoDataBox>Sin registros en el rango seleccionado</NoDataBox>
-            ) : (
-              <ResponsiveContainer width="100%" height={260}>
-                <BarChart data={metricasOperativas.dataCapacidad} margin={{ top: 15, right: 20, left: -10, bottom: 20 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255, 255, 255, 0.07)" />
-                  <XAxis dataKey="capacidad" stroke="#94a3b8" />
-                  <YAxis stroke="#94a3b8" allowDecimals={false} />
-                  <Tooltip
-                    contentStyle={{
-                      backgroundColor: "#0f172a",
-                      borderColor: "rgba(0, 195, 255, 0.3)",
-                      borderRadius: "10px",
-                      color: "#fff",
-                    }}
-                    formatter={(val) => [`${val} viajes`, "Cargas"]}
-                  />
-                  <Bar dataKey="viajes" fill="#00c3ff" radius={[6, 6, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            )}
-          </ChartBody>
-        </ChartCard>
-
-        <ChartCard>
-          <ChartHeader>
-            <MdCheckCircle className="chart-icon green" />
             <div>
-              <h4>Estado de los Despachos</h4>
-              <p>Relación entre recargas pagadas al instante vs asignadas a deuda</p>
+              <h3>Registrar Recarga de Cisterna</h3>
+              <p>Completa la información del viaje y confirma el despacho</p>
             </div>
-          </ChartHeader>
-          <ChartBody>
-            {metricasOperativas.dataEstado.length === 0 ? (
-              <NoDataBox>Sin registros en el rango seleccionado</NoDataBox>
-            ) : (
-              <ResponsiveContainer width="100%" height={260}>
-                <PieChart>
-                  <Pie
-                    data={metricasOperativas.dataEstado}
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={55}
-                    outerRadius={85}
-                    paddingAngle={6}
-                    dataKey="value"
-                    label={({ name, value }) => `${name}: ${value}`}
-                  >
-                    {metricasOperativas.dataEstado.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={entry.color} />
-                    ))}
-                  </Pie>
-                  <Tooltip
-                    contentStyle={{
-                      backgroundColor: "#0f172a",
-                      borderColor: "rgba(255, 255, 255, 0.15)",
-                      borderRadius: "10px",
-                      color: "#fff",
-                    }}
-                  />
-                  <Legend verticalAlign="bottom" height={36} />
-                </PieChart>
-              </ResponsiveContainer>
-            )}
-          </ChartBody>
-        </ChartCard>
-      </ChartsRow>
+          </CardHeader>
 
-      {/* 📋 LISTA INTERACTIVA DE RECARGAS DEL REGISTRADOR */}
-      <TableSection>
-        <TableHeader>
-          <div className="title-box">
-            <h3>💧 Mis Recargas Registradas</h3>
-            <p>Listado de despachos realizados por tu usuario con opción de agregar notas de revisión</p>
-          </div>
+          {/* 1. SELECCIÓN DE CAMIÓN CON COMBOBOX */}
+          <FormGroup ref={comboboxRef} style={{ position: "relative" }}>
+            <Label>
+              <MdLocalShipping className="icon" /> Buscar y Seleccionar Camión Cisterna: <span className="req">*</span>
+            </Label>
 
-          <TableFilters>
-            <SearchInputBox>
-              <MdSearch />
-              <input
+            <ComboboxInputWrapper>
+              <MdSearch className="search-icon" />
+              <SearchInput
                 type="text"
-                placeholder="Buscar por placa, chofer o nota..."
-                value={busqueda}
-                onChange={(e) => setBusqueda(e.target.value)}
+                placeholder="Escribe la placa, nombre del chofer o modelo..."
+                value={busquedaCamion}
+                onChange={(e) => {
+                  setBusquedaCamion(e.target.value);
+                  setMostrarMenuCamiones(true);
+                  if (camionSeleccionadoId) setCamionSeleccionadoId("");
+                }}
+                onFocus={() => setMostrarMenuCamiones(true)}
               />
-              {busqueda && (
-                <button onClick={() => setBusqueda("")} title="Limpiar búsqueda">
-                  <MdClose />
-                </button>
-              )}
-            </SearchInputBox>
+              {cargandoCamiones && <SpinnerInline />}
+            </ComboboxInputWrapper>
 
-            <FilterSelect
-              value={filtroEstatus}
-              onChange={(e) => setFiltroEstatus(e.target.value)}
-            >
-              <option value="todos">Todos los Estados</option>
-              <option value="pagado">✅ Solo Pagados</option>
-              <option value="pendiente">⏳ Solo Deuda / Pendientes</option>
-              <option value="con_nota">📝 Con Notas u Observaciones</option>
-            </FilterSelect>
-          </TableFilters>
-        </TableHeader>
+            {mostrarMenuCamiones && (
+              <ComboboxDropdown>
+                {camionesFiltrados.length === 0 ? (
+                  <DropdownEmpty>
+                    No se encontraron camiones con esa placa o chofer.
+                  </DropdownEmpty>
+                ) : (
+                  camionesFiltrados.map((c) => (
+                    <ComboboxItem
+                      key={c.id}
+                      $selected={String(c.id) === String(camionSeleccionadoId)}
+                      onClick={() => {
+                        setCamionSeleccionadoId(c.id);
+                        setBusquedaCamion(`${c.placa} — ${c.chofer}`);
+                        setMostrarMenuCamiones(false);
+                      }}
+                    >
+                      <div className="item-plate">
+                        <span className="plate-badge">{c.placa}</span>
+                        <span className="driver-name">{c.chofer}</span>
+                      </div>
+                      <div className="item-specs">
+                        <span>💧 {c.capacidad?.toLocaleString()} Lts</span>
+                        {c.modelo && <span className="model"> • {c.modelo}</span>}
+                      </div>
+                    </ComboboxItem>
+                  ))
+                )}
+              </ComboboxDropdown>
+            )}
 
-        {loading ? (
-          <LoadingStateBox>Cargando tus recargas...</LoadingStateBox>
-        ) : registrosFiltrados.length === 0 ? (
-          <EmptyStateBox>
-            <MdWaterDrop className="empty-icon" />
-            <h4>No se encontraron recargas</h4>
-            <p>
-              {busqueda || filtroEstatus !== "todos"
-                ? "No hay recargas que coincidan con los filtros aplicados."
-                : "Aún no has registrado ninguna recarga en este rango de fechas. ¡Haz clic en 'Nueva Recarga' para comenzar!"}
-            </p>
-            <BotonNuevaRecarga onClick={() => setModalRecargaAbierto(true)}>
-              <MdWaterDrop /> Registrar Primera Recarga
-            </BotonNuevaRecarga>
-          </EmptyStateBox>
-        ) : (
-          <TableWrapper>
-            <Table>
-              <thead>
-                <tr>
-                  <th>Fecha y Hora</th>
-                  <th>Camión & Chofer</th>
-                  <th>Capacidad</th>
-                  <th>Monto</th>
-                  <th>Estado & Pago</th>
-                  <th>Foto Camión</th>
-                  <th>Nota / Novedad</th>
-                  <th style={{ textAlign: "center" }}>Acción</th>
-                </tr>
-              </thead>
-              <tbody>
-                {registrosFiltrados.map((recarga) => {
-                  const esPagado = recarga.estatus === "pagado";
-                  const tieneNota = Boolean(recarga.nota && recarga.nota.trim());
-
-                  return (
-                    <tr key={recarga.id}>
-                      <td>
-                        <DateTimeBadge>
-                          <MdOutlineAccessTime className="icon" />
-                          <span>{formatearFechaHora(recarga.fecha_carga)}</span>
-                        </DateTimeBadge>
-                      </td>
-
-                      <td>
-                        <TruckInfoBox>
-                          <span className="placa">
-                            {recarga.camiones?.placa || "Sin Placa"}
-                          </span>
-                          <span className="chofer">
-                            {recarga.camiones?.chofer || "Chofer no especificado"}
-                          </span>
-                          {recarga.camiones?.modelo && (
-                            <span className="modelo">{recarga.camiones.modelo}</span>
-                          )}
-                        </TruckInfoBox>
-                      </td>
-
-                      <td>
-                        <CapacityBadge>
-                          💧 {recarga.camiones?.capacidad
-                            ? `${recarga.camiones.capacidad.toLocaleString()} Lts`
-                            : "N/A"}
-                        </CapacityBadge>
-                      </td>
-
-                      <td>
-                        <MontoBadge>${Number(recarga.monto || 0).toFixed(2)}</MontoBadge>
-                      </td>
-
-                      <td>
-                        {esPagado ? (
-                          <StatusBadge $type="paid">
-                            <MdCheckCircle /> Pagado ({recarga.metodo || "Efectivo"})
-                            {recarga.referencia && (
-                              <span className="ref">Ref: {recarga.referencia}</span>
-                            )}
-                          </StatusBadge>
-                        ) : (
-                          <StatusBadge $type="debt">
-                            <MdHourglassEmpty /> A Deuda (Pendiente)
-                          </StatusBadge>
-                        )}
-                      </td>
-
-                      <td>
-                        {recarga.url_foto ? (
-                          <ThumbnailBtn
-                            type="button"
-                            onClick={() =>
-                              setFotoModal({
-                                url: recarga.url_foto,
-                                titulo: `Camión ${recarga.camiones?.placa || ""} - ${recarga.camiones?.chofer || ""}`,
-                              })
-                            }
-                            title="Ver foto del camión"
-                          >
-                            <img src={recarga.url_foto} alt="Camión" />
-                            <span className="zoom-icon">🔍</span>
-                          </ThumbnailBtn>
-                        ) : (
-                          <span style={{ color: "#64748b", fontSize: "12px" }}>Sin foto</span>
-                        )}
-                      </td>
-
-                      <td>
-                        {tieneNota ? (
-                          <NoteBubble onClick={() => handleAbrirNota(recarga)} title="Clic para editar nota">
-                            <MdEditNote className="bubble-icon" />
-                            <span>{recarga.nota}</span>
-                          </NoteBubble>
-                        ) : (
-                          <EmptyNoteLabel onClick={() => handleAbrirNota(recarga)}>
-                            + Añadir nota
-                          </EmptyNoteLabel>
-                        )}
-                      </td>
-
-                      <td style={{ textAlign: "center" }}>
-                        <BtnAccionNota
-                          type="button"
-                          $hasNote={tieneNota}
-                          onClick={() => handleAbrirNota(recarga)}
-                          title={tieneNota ? "Editar nota de revisión" : "Agregar nota para el administrador"}
-                        >
-                          <MdEditNote />
-                          {tieneNota ? "Editar Nota" : "Añadir Nota"}
-                        </BtnAccionNota>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </Table>
-          </TableWrapper>
-        )}
-      </TableSection>
-
-      {/* 📝 MODAL PARA AGREGAR / EDITAR NOTA */}
-      {modalNotaAbierto && recargaParaNota && (
-        <ModalOverlay onClick={() => setModalNotaAbierto(false)}>
-          <NotaModalCard onClick={(e) => e.stopPropagation()}>
-            <ModalHeader>
-              <div className="header-info">
-                <div className="badge-icon">📝</div>
-                <div>
-                  <h3>Nota de Revisión para Administración</h3>
-                  <p>
-                    Camión: <strong>{recargaParaNota.camiones?.placa || "N/A"}</strong> — Chofer:{" "}
-                    <strong>{recargaParaNota.camiones?.chofer || "N/A"}</strong>
-                  </p>
+            {camionActual && (
+              <SelectedTruckPill>
+                <div className="pill-icon">
+                  <MdCheckCircle />
                 </div>
-              </div>
-              <CloseBtn onClick={() => setModalNotaAbierto(false)}>
-                <MdClose />
-              </CloseBtn>
-            </ModalHeader>
-
-            <form onSubmit={handleGuardarNota}>
-              <ModalContentBody>
-                <InfoTipBox>
-                  <MdInfoOutline className="tip-icon" />
-                  <span>
-                    Esta nota quedará vinculada permanentemente a este viaje para que el administrador la
-                    revise en el control de auditoría y recargas.
+                <div className="pill-info">
+                  <strong>{camionActual.placa}</strong> — {camionActual.chofer}
+                  <span className="sub">
+                    Capacidad: {camionActual.capacidad?.toLocaleString()} Lts {camionActual.modelo ? `| Modelo: ${camionActual.modelo}` : ""}
                   </span>
-                </InfoTipBox>
+                </div>
+              </SelectedTruckPill>
+            )}
+          </FormGroup>
+
+          {/* 2. MONTO DE LA RECARGA */}
+          <FormGroup>
+            <Label>
+              <MdAttachMoney className="icon" /> Monto de la Recarga ($ USD): <span className="req">*</span>
+            </Label>
+            <Input
+              type="number"
+              step="0.01"
+              placeholder="Ej: 25.00"
+              value={monto}
+              onChange={(e) => setMonto(e.target.value)}
+              required
+            />
+          </FormGroup>
+
+          {/* 3. TIPO DE REGISTRO: PAGADO vs DEUDA */}
+          <FormGroup>
+            <Label>Estatus del Cobro de la Recarga:</Label>
+            <TypeSelectorGrid>
+              <TypeButton
+                type="button"
+                $active={tipoRegistro === "pagado"}
+                $variant="success"
+                onClick={() => setTipoRegistro("pagado")}
+              >
+                <MdCheckCircle className="btn-icon" />
+                <div className="btn-text">
+                  <span className="btn-title">Pagado al Momento</span>
+                  <span className="btn-desc">Registrar referencia de pago</span>
+                </div>
+              </TypeButton>
+
+              <TypeButton
+                type="button"
+                $active={tipoRegistro === "deuda"}
+                $variant="warning"
+                onClick={() => setTipoRegistro("deuda")}
+              >
+                <MdHourglassEmpty className="btn-icon" />
+                <div className="btn-text">
+                  <span className="btn-title">Cargar como Deuda</span>
+                  <span className="btn-desc">Cuentas por Cobrar</span>
+                </div>
+              </TypeButton>
+            </TypeSelectorGrid>
+          </FormGroup>
+
+          {/* 4. CAMPOS SI ES PAGADO */}
+          {tipoRegistro === "pagado" && (
+            <PaymentFieldsBox>
+              <PaymentFieldsGrid>
+                <FormGroup>
+                  <Label>
+                    <MdPayments className="icon" /> Método de Pago:
+                  </Label>
+                  <Select value={metodoPago} onChange={(e) => setMetodoPago(e.target.value)}>
+                    <option value="Transferencia">Transferencia Bancaria</option>
+                    <option value="Pago Móvil">Pago Móvil</option>
+                    <option value="Efectivo">Efectivo ($ USD o Bs)</option>
+                    <option value="Punto de Venta">Punto de Venta</option>
+                  </Select>
+                </FormGroup>
 
                 <FormGroup>
-                  <label>Escribe tu nota u observación de este viaje:</label>
-                  <TextareaNota
-                    rows="4"
-                    placeholder="Ej: Chofer reportó que el recibo de transferencia se confirmará en la tarde; carga autorizada por encargado; cisterna con capacidad reducida por avería..."
-                    value={textoNota}
-                    onChange={(e) => setTextoNota(e.target.value)}
-                    autoFocus
+                  <Label>
+                    <MdReceipt className="icon" /> N° Referencia Bancaria:
+                    {metodoPago !== "Efectivo" && <span className="req"> *</span>}
+                  </Label>
+                  <Input
+                    type="text"
+                    placeholder={metodoPago === "Efectivo" ? "Opcional para efectivo" : "Ej: 98451230"}
+                    value={referencia}
+                    onChange={(e) => setReferencia(e.target.value)}
+                    required={metodoPago !== "Efectivo"}
                   />
                 </FormGroup>
-              </ModalContentBody>
+              </PaymentFieldsGrid>
 
-              <ModalFooter>
-                <BtnCancelar type="button" onClick={() => setModalNotaAbierto(false)} disabled={guardandoNota}>
-                  Cancelar
-                </BtnCancelar>
-                <BtnGuardar type="submit" disabled={guardandoNota}>
-                  <MdSave /> {guardandoNota ? "Guardando..." : "Guardar Nota"}
-                </BtnGuardar>
-              </ModalFooter>
-            </form>
-          </NotaModalCard>
-        </ModalOverlay>
-      )}
+              {/* FOTO COMPROBANTE DE PAGO */}
+              <FormGroup>
+                <Label>
+                  <MdPhotoCamera className="icon" /> Foto del Comprobante de Pago (Opcional):
+                </Label>
+                <PhotoUploadContainer>
+                  {previewComprobante ? (
+                    <PhotoPreviewWrapper>
+                      <img src={previewComprobante} alt="Preview comprobante" />
+                      <RemovePhotoBtn
+                        type="button"
+                        onClick={() => {
+                          setFotoComprobante(null);
+                          setPreviewComprobante(null);
+                        }}
+                      >
+                        <MdDeleteOutline /> Quitar
+                      </RemovePhotoBtn>
+                    </PhotoPreviewWrapper>
+                  ) : (
+                    <UploadDropzone>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        id="foto-comprobante-input"
+                        onChange={handleFotoComprobanteChange}
+                      />
+                      <label htmlFor="foto-comprobante-input">
+                        <MdPhotoCamera className="upload-icon" />
+                        <span>Subir captura de comprobante</span>
+                      </label>
+                    </UploadDropzone>
+                  )}
+                </PhotoUploadContainer>
+              </FormGroup>
+            </PaymentFieldsBox>
+          )}
 
-      {/* 🖼️ MODAL VISOR DE FOTO */}
-      {fotoModal && (
-        <ModalOverlay onClick={() => setFotoModal(null)}>
-          <ImageLightbox onClick={(e) => e.stopPropagation()}>
-            <div className="lightbox-header">
-              <h4>{fotoModal.titulo}</h4>
-              <button onClick={() => setFotoModal(null)}>
-                <MdClose />
-              </button>
+          {/* 5. FOTO DEL CAMIÓN (OPCIONAL) */}
+          <FormGroup>
+            <Label>
+              <MdPhotoCamera className="icon" /> Foto de la Cisterna en el Pozo (Opcional):
+            </Label>
+            <PhotoUploadContainer>
+              {previewCamion ? (
+                <PhotoPreviewWrapper>
+                  <img src={previewCamion} alt="Preview cisterna" />
+                  <RemovePhotoBtn
+                    type="button"
+                    onClick={() => {
+                      setFotoCamion(null);
+                      setPreviewCamion(null);
+                    }}
+                  >
+                    <MdDeleteOutline /> Quitar
+                  </RemovePhotoBtn>
+                </PhotoPreviewWrapper>
+              ) : (
+                <UploadDropzone>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    id="foto-camion-input"
+                    onChange={handleFotoCamionChange}
+                  />
+                  <label htmlFor="foto-camion-input">
+                    <MdLocalShipping className="upload-icon" />
+                    <span>Subir foto de la cisterna cargando</span>
+                  </label>
+                </UploadDropzone>
+              )}
+            </PhotoUploadContainer>
+          </FormGroup>
+
+          {/* 6. NOTA ADICIONAL */}
+          <FormGroup>
+            <Label>
+              <MdEditNote className="icon" /> Nota u Observación (Opcional):
+            </Label>
+            <TextArea
+              rows={2}
+              placeholder="Añade detalles sobre la carga, viaje, chofer o incidencias..."
+              value={nota}
+              onChange={(e) => setNota(e.target.value)}
+            />
+          </FormGroup>
+
+          {/* BOTÓN DE DESPACHO */}
+          <SubmitBtn type="submit" disabled={guardando}>
+            {guardando ? (
+              "Procesando Despacho..."
+            ) : tipoRegistro === "pagado" ? (
+              "💧 Confirmar y Registrar Recarga Pagada"
+            ) : (
+              "⏳ Registrar Recarga como Deuda"
+            )}
+          </SubmitBtn>
+        </DispatchCard>
+
+        {/* SIDEBAR INFORMATIVO: ÚLTIMA RECARGA DESPACHADA */}
+        <SidebarPanel>
+          <LastRecordCard>
+            <div className="card-head">
+              <MdOutlineAccessTime className="head-icon" />
+              <h4>Última Recarga Registrada</h4>
             </div>
-            <img src={fotoModal.url} alt="Evidencia" />
-          </ImageLightbox>
-        </ModalOverlay>
-      )}
 
-      {/* 💧 MODAL REGISTRAR RECARGA */}
-      <ModalRegistrarRecarga
-        isOpen={modalRecargaAbierto}
-        onClose={() => setModalRecargaAbierto(false)}
-        onRecargaExitosa={cargarMisRegistros}
-      />
+            {ultimoRegistro ? (
+              <div className="record-details">
+                <div className="record-badge-row">
+                  <span className={`status-tag ${ultimoRegistro.estatus}`}>
+                    {ultimoRegistro.estatus === "pagado" ? "✓ Pagado" : "⏳ Deuda"}
+                  </span>
+                  <span className="amount">${Number(ultimoRegistro.monto).toFixed(2)}</span>
+                </div>
+
+                <div className="record-info-line">
+                  <span className="lbl">Placa:</span>
+                  <strong>{ultimoRegistro.camiones?.placa || "N/A"}</strong>
+                </div>
+
+                <div className="record-info-line">
+                  <span className="lbl">Chofer:</span>
+                  <span>{ultimoRegistro.camiones?.chofer || "Sin chofer"}</span>
+                </div>
+
+                <div className="record-info-line">
+                  <span className="lbl">Capacidad:</span>
+                  <span>{ultimoRegistro.camiones?.capacidad?.toLocaleString() || "--"} Lts</span>
+                </div>
+
+                <div className="record-info-line">
+                  <span className="lbl">Método:</span>
+                  <span>{ultimoRegistro.metodo}</span>
+                </div>
+
+                {ultimoRegistro.referencia && (
+                  <div className="record-info-line">
+                    <span className="lbl">Referencia:</span>
+                    <span>{ultimoRegistro.referencia}</span>
+                  </div>
+                )}
+
+                <div className="record-footer">
+                  <MdOutlineAccessTime />
+                  <span>
+                    {new Date(ultimoRegistro.fecha_carga).toLocaleTimeString("es-VE", {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                      hour12: true,
+                    })}
+                  </span>
+                </div>
+              </div>
+            ) : (
+              <div className="no-record">
+                <MdWaterDrop className="water-ico" />
+                <p>Aún no has registrado recargas en esta sesión.</p>
+              </div>
+            )}
+          </LastRecordCard>
+
+          <InstructionCard>
+            <h5>📋 Instrucciones Operativas</h5>
+            <ul>
+              <li>Busca el camión por su placa o chofer en el selector superior.</li>
+              <li>Indica el monto acordado para la recarga en dólares ($).</li>
+              <li>Si paga en el pozo, selecciona "Pagado al Momento" y coloca la referencia.</li>
+              <li>Si es a crédito, márcalo como "Cargar como Deuda".</li>
+              <li>Para agregar un nuevo camión o chofer, dirígete a la pestaña <strong>Camiones</strong> en la barra superior.</li>
+            </ul>
+          </InstructionCard>
+        </SidebarPanel>
+      </GridWrapper>
     </Container>
   );
 }
 
-// 🎨 STYLED COMPONENTS CON ESTÉTICA OSCURA MODERNA ULTRA-PULIDA
+// 🎨 STYLED COMPONENTS MODERN GLASSMORPHIC TERMINAL
 const Container = styled.div`
-  display: flex;
-  flex-direction: column;
-  gap: 24px;
-  width: 100%;
-  max-width: 1360px;
+  max-width: 1200px;
   margin: 0 auto;
-  padding-bottom: 40px;
+  animation: fadeIn 0.3s ease-out;
 `;
 
-const HeaderSection = styled.div`
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 16px;
-  background: rgba(15, 23, 42, 0.6);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 18px;
-  padding: 20px 24px;
-  backdrop-filter: blur(10px);
-`;
+const TopTerminalHeader = styled.div`
+  background: linear-gradient(135deg, rgba(0, 195, 255, 0.12), rgba(0, 114, 255, 0.08));
+  border: 1px solid rgba(0, 195, 255, 0.25);
+  border-radius: 20px;
+  padding: 24px 28px;
+  margin-bottom: 24px;
 
-const HeaderLeft = styled.div`
+  .terminal-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: rgba(0, 195, 255, 0.2);
+    color: #38bdf8;
+    font-size: 12px;
+    font-weight: 700;
+    padding: 4px 12px;
+    border-radius: 20px;
+    margin-bottom: 12px;
+  }
+
   h2 {
+    color: #ffffff;
     font-size: 24px;
     font-weight: 800;
-    color: #ffffff;
-    margin: 6px 0 4px 0;
-  }
-
-  .subtitle {
-    margin: 0;
-    font-size: 13px;
-    color: #94a3b8;
-  }
-`;
-
-const UserBadge = styled.div`
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 10px;
-  border-radius: 20px;
-  background: rgba(0, 195, 255, 0.15);
-  border: 1px solid rgba(0, 195, 255, 0.35);
-  color: #38bdf8;
-  font-size: 12px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-
-  .badge-icon {
-    font-size: 14px;
-  }
-`;
-
-const HeaderActions = styled.div`
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
-`;
-
-const BotonNuevaRecarga = styled.button`
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  background: linear-gradient(135deg, #00c3ff 0%, #0072ff 100%);
-  color: #ffffff;
-  border: none;
-  padding: 11px 20px;
-  border-radius: 12px;
-  font-size: 14px;
-  font-weight: 700;
-  cursor: pointer;
-  box-shadow: 0 4px 20px rgba(0, 195, 255, 0.35);
-  transition: all 0.2s ease;
-
-  &:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 6px 25px rgba(0, 195, 255, 0.5);
-  }
-`;
-
-const FiltroDiasBox = styled.div`
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  background: rgba(30, 41, 59, 0.8);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  padding: 9px 14px;
-  border-radius: 12px;
-  color: #38bdf8;
-
-  select {
-    background: transparent;
-    border: none;
-    color: #ffffff;
-    font-size: 13px;
-    font-weight: 600;
-    outline: none;
-    cursor: pointer;
-
-    option {
-      background: #0f172a;
-      color: #ffffff;
-    }
-  }
-`;
-
-const MetricsGrid = styled.div`
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 16px;
-`;
-
-const MetricCard = styled.div`
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  background: rgba(15, 23, 42, 0.7);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 16px;
-  padding: 18px 20px;
-  transition: transform 0.2s ease, border-color 0.2s ease;
-
-  &:hover {
-    transform: translateY(-3px);
-    border-color: rgba(0, 195, 255, 0.3);
-  }
-
-  .icon-wrapper {
-    width: 48px;
-    height: 48px;
-    border-radius: 14px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 24px;
-    flex-shrink: 0;
-
-    background: ${({ $color }) =>
-      $color === "cyan"
-        ? "rgba(0, 195, 255, 0.15)"
-        : $color === "blue"
-        ? "rgba(59, 130, 246, 0.15)"
-        : $color === "green"
-        ? "rgba(16, 185, 129, 0.15)"
-        : $color === "amber"
-        ? "rgba(245, 158, 11, 0.15)"
-        : "rgba(168, 85, 247, 0.15)"};
-
-    color: ${({ $color }) =>
-      $color === "cyan"
-        ? "#00c3ff"
-        : $color === "blue"
-        ? "#60a5fa"
-        : $color === "green"
-        ? "#34d399"
-        : $color === "amber"
-        ? "#fbbf24"
-        : "#c084fc"};
-  }
-
-  .content {
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-
-    .label {
-      font-size: 11px;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-      color: #94a3b8;
-      font-weight: 700;
-    }
-
-    .value {
-      font-size: 22px;
-      font-weight: 800;
-      color: #ffffff;
-      margin: 4px 0 2px 0;
-    }
-
-    .detail {
-      font-size: 11px;
-      color: #64748b;
-    }
-  }
-`;
-
-const ChartsRow = styled.div`
-  display: grid;
-  grid-template-columns: 1.2fr 0.8fr;
-  gap: 18px;
-
-  @media (max-width: 960px) {
-    grid-template-columns: 1fr;
-  }
-`;
-
-const ChartCard = styled.div`
-  background: rgba(15, 23, 42, 0.7);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 18px;
-  padding: 20px;
-  display: flex;
-  flex-direction: column;
-`;
-
-const ChartHeader = styled.div`
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 16px;
-
-  .chart-icon {
-    font-size: 26px;
-
-    &.cyan {
-      color: #00c3ff;
-    }
-    &.green {
-      color: #10b981;
-    }
-  }
-
-  h4 {
-    margin: 0 0 2px 0;
-    font-size: 16px;
-    font-weight: 700;
-    color: #ffffff;
+    margin: 0 0 6px 0;
   }
 
   p {
-    margin: 0;
-    font-size: 12px;
     color: #94a3b8;
+    font-size: 13px;
+    margin: 0;
   }
 `;
 
-const ChartBody = styled.div`
-  flex: 1;
-  min-height: 260px;
+const SuccessBanner = styled.div`
+  background: rgba(34, 197, 94, 0.15);
+  border: 1px solid rgba(34, 197, 94, 0.4);
+  border-radius: 16px;
+  padding: 16px 20px;
+  margin-bottom: 24px;
   display: flex;
   align-items: center;
-  justify-content: center;
-`;
+  gap: 14px;
+  color: #86efac;
+  animation: slideDown 0.3s ease;
 
-const NoDataBox = styled.div`
-  color: #64748b;
-  font-size: 13px;
-  text-align: center;
-  padding: 30px;
-`;
+  .success-icon {
+    font-size: 28px;
+    flex-shrink: 0;
+    color: #22c55e;
+  }
 
-const TableSection = styled.div`
-  background: rgba(15, 23, 42, 0.7);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 18px;
-  padding: 22px;
-  display: flex;
-  flex-direction: column;
-  gap: 18px;
-`;
+  .text {
+    flex: 1;
 
-const TableHeader = styled.div`
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 16px;
-
-  .title-box {
-    h3 {
-      margin: 0 0 4px 0;
-      font-size: 18px;
-      font-weight: 700;
+    strong {
+      display: block;
+      font-size: 14px;
       color: #ffffff;
     }
+
     p {
-      margin: 0;
-      font-size: 12px;
-      color: #94a3b8;
-    }
-  }
-`;
-
-const TableFilters = styled.div`
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
-`;
-
-const SearchInputBox = styled.div`
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  background: rgba(30, 41, 59, 0.7);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  padding: 8px 14px;
-  border-radius: 10px;
-  color: #94a3b8;
-
-  input {
-    background: transparent;
-    border: none;
-    color: #ffffff;
-    font-size: 13px;
-    outline: none;
-    width: 200px;
-
-    &::placeholder {
-      color: #64748b;
+      margin: 2px 0 0 0;
+      font-size: 13px;
+      color: #86efac;
     }
   }
 
   button {
     background: transparent;
     border: none;
-    color: #94a3b8;
+    color: #86efac;
     cursor: pointer;
-    display: flex;
-    align-items: center;
     font-size: 16px;
-    &:hover {
-      color: #ffffff;
-    }
+    padding: 4px;
   }
 `;
 
-const FilterSelect = styled.select`
-  background: rgba(30, 41, 59, 0.7);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  color: #ffffff;
-  padding: 8px 12px;
-  border-radius: 10px;
-  font-size: 13px;
-  outline: none;
-  cursor: pointer;
+const GridWrapper = styled.div`
+  display: grid;
+  grid-template-columns: 1fr 340px;
+  gap: 24px;
 
-  option {
-    background: #0f172a;
-    color: #ffffff;
+  @media (max-width: 900px) {
+    grid-template-columns: 1fr;
   }
 `;
 
-const TableWrapper = styled.div`
-  width: 100%;
-  overflow-x: auto;
-  border-radius: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.06);
-`;
+const DispatchCard = styled.form`
+  background: rgba(21, 28, 45, 0.75);
+  backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 20px;
+  padding: 30px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
 
-const Table = styled.table`
-  width: 100%;
-  border-collapse: collapse;
-  text-align: left;
-  font-size: 13px;
-
-  thead th {
-    background: rgba(30, 41, 59, 0.6);
-    color: #94a3b8;
-    font-weight: 600;
-    text-transform: uppercase;
-    font-size: 11px;
-    letter-spacing: 0.5px;
-    padding: 14px 16px;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-    white-space: nowrap;
-  }
-
-  tbody tr {
-    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-    transition: background 0.15s ease;
-
-    &:hover {
-      background: rgba(255, 255, 255, 0.02);
-    }
-  }
-
-  tbody td {
-    padding: 14px 16px;
-    color: #e2e8f0;
-    vertical-align: middle;
+  @media (max-width: 600px) {
+    padding: 20px;
   }
 `;
 
-const DateTimeBadge = styled.div`
+const CardHeader = styled.div`
   display: flex;
   align-items: center;
-  gap: 6px;
-  color: #cbd5e1;
-  font-size: 12px;
-  font-family: monospace;
+  gap: 16px;
+  margin-bottom: 24px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
 
-  .icon {
-    color: #38bdf8;
-    font-size: 15px;
-  }
-`;
-
-const TruckInfoBox = styled.div`
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-
-  .placa {
-    font-weight: 700;
-    color: #38bdf8;
-    font-size: 13px;
-  }
-
-  .chofer {
-    font-size: 12px;
-    color: #ffffff;
-  }
-
-  .modelo {
-    font-size: 11px;
-    color: #64748b;
-  }
-`;
-
-const CapacityBadge = styled.span`
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 4px 10px;
-  background: rgba(0, 195, 255, 0.1);
-  border: 1px solid rgba(0, 195, 255, 0.25);
-  border-radius: 8px;
-  color: #38bdf8;
-  font-weight: 600;
-  font-size: 12px;
-  white-space: nowrap;
-`;
-
-const MontoBadge = styled.span`
-  font-weight: 700;
-  color: #10b981;
-  font-size: 14px;
-`;
-
-const StatusBadge = styled.div`
-  display: inline-flex;
-  flex-direction: column;
-  gap: 3px;
-  padding: 4px 10px;
-  border-radius: 8px;
-  font-size: 12px;
-  font-weight: 600;
-  white-space: nowrap;
-
-  background: ${({ $type }) =>
-    $type === "paid" ? "rgba(16, 185, 129, 0.15)" : "rgba(245, 158, 11, 0.15)"};
-  border: 1px solid
-    ${({ $type }) =>
-      $type === "paid" ? "rgba(16, 185, 129, 0.3)" : "rgba(245, 158, 11, 0.3)"};
-  color: ${({ $type }) => ($type === "paid" ? "#34d399" : "#fbbf24")};
-
-  .ref {
-    font-size: 10px;
-    color: #94a3b8;
-    font-weight: 400;
-  }
-`;
-
-const ThumbnailBtn = styled.button`
-  position: relative;
-  width: 44px;
-  height: 44px;
-  border-radius: 8px;
-  overflow: hidden;
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  background: #000;
-  cursor: pointer;
-  padding: 0;
-  transition: transform 0.2s ease;
-
-  img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-  }
-
-  .zoom-icon {
-    position: absolute;
-    inset: 0;
+  .icon-header {
+    width: 46px;
+    height: 46px;
+    border-radius: 12px;
+    background: rgba(0, 195, 255, 0.15);
+    color: #00c3ff;
     display: flex;
     align-items: center;
     justify-content: center;
-    background: rgba(0, 0, 0, 0.5);
-    opacity: 0;
-    transition: opacity 0.2s ease;
-    font-size: 14px;
-  }
-
-  &:hover {
-    transform: scale(1.08);
-    .zoom-icon {
-      opacity: 1;
-    }
-  }
-`;
-
-const NoteBubble = styled.div`
-  display: flex;
-  align-items: flex-start;
-  gap: 6px;
-  background: rgba(168, 85, 247, 0.12);
-  border: 1px solid rgba(168, 85, 247, 0.3);
-  padding: 6px 10px;
-  border-radius: 8px;
-  max-width: 240px;
-  cursor: pointer;
-  transition: all 0.2s ease;
-
-  .bubble-icon {
-    color: #c084fc;
-    font-size: 16px;
+    font-size: 24px;
     flex-shrink: 0;
-    margin-top: 1px;
   }
 
-  span {
-    color: #e9d5ff;
-    font-size: 12px;
-    display: -webkit-box;
-    -webkit-line-clamp: 2;
-    -webkit-box-orient: vertical;
-    overflow: hidden;
-    line-height: 1.3;
-  }
-
-  &:hover {
-    background: rgba(168, 85, 247, 0.22);
-    border-color: #c084fc;
-  }
-`;
-
-const EmptyNoteLabel = styled.span`
-  color: #64748b;
-  font-size: 12px;
-  cursor: pointer;
-  padding: 4px 8px;
-  border-radius: 6px;
-  border: 1px dashed rgba(255, 255, 255, 0.1);
-  transition: all 0.2s ease;
-
-  &:hover {
-    color: #38bdf8;
-    border-color: #00c3ff;
-    background: rgba(0, 195, 255, 0.08);
-  }
-`;
-
-const BtnAccionNota = styled.button`
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 12px;
-  border-radius: 8px;
-  font-size: 12px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s ease;
-
-  background: ${({ $hasNote }) =>
-    $hasNote ? "rgba(168, 85, 247, 0.15)" : "rgba(30, 41, 59, 0.7)"};
-  border: 1px solid
-    ${({ $hasNote }) =>
-      $hasNote ? "rgba(168, 85, 247, 0.4)" : "rgba(255, 255, 255, 0.12)"};
-  color: ${({ $hasNote }) => ($hasNote ? "#c084fc" : "#cbd5e1")};
-
-  &:hover {
-    background: rgba(168, 85, 247, 0.3);
+  h3 {
     color: #ffffff;
-    border-color: #c084fc;
-    transform: translateY(-1px);
-  }
-`;
-
-const LoadingStateBox = styled.div`
-  text-align: center;
-  padding: 50px 20px;
-  color: #94a3b8;
-  font-size: 14px;
-`;
-
-const EmptyStateBox = styled.div`
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 60px 20px;
-  text-align: center;
-
-  .empty-icon {
-    font-size: 50px;
-    color: #38bdf8;
-    opacity: 0.4;
-    margin-bottom: 12px;
-  }
-
-  h4 {
-    margin: 0 0 6px 0;
     font-size: 18px;
-    color: #ffffff;
+    font-weight: 700;
+    margin: 0 0 4px 0;
   }
 
   p {
-    max-width: 420px;
     color: #94a3b8;
-    font-size: 13px;
-    margin: 0 0 18px 0;
-    line-height: 1.5;
-  }
-`;
-
-// MODALES
-const ModalOverlay = styled.div`
-  position: fixed;
-  inset: 0;
-  background: rgba(4, 9, 20, 0.85);
-  backdrop-filter: blur(8px);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 3000;
-  padding: 16px;
-  animation: fadeIn 0.2s ease-out;
-`;
-
-const NotaModalCard = styled.div`
-  background: #111827;
-  border: 1px solid rgba(168, 85, 247, 0.35);
-  border-radius: 18px;
-  width: 100%;
-  max-width: 540px;
-  box-shadow: 0 25px 60px rgba(0, 0, 0, 0.8), 0 0 30px rgba(168, 85, 247, 0.2);
-  overflow: hidden;
-`;
-
-const ModalHeader = styled.div`
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 18px 22px;
-  background: rgba(17, 24, 39, 0.95);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-
-  .header-info {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-
-    .badge-icon {
-      font-size: 24px;
-    }
-
-    h3 {
-      margin: 0 0 2px 0;
-      font-size: 17px;
-      font-weight: 700;
-      color: #ffffff;
-    }
-
-    p {
-      margin: 0;
-      font-size: 12px;
-      color: #94a3b8;
-
-      strong {
-        color: #38bdf8;
-      }
-    }
-  }
-`;
-
-const CloseBtn = styled.button`
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  color: #94a3b8;
-  width: 32px;
-  height: 32px;
-  border-radius: 8px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 18px;
-  cursor: pointer;
-
-  &:hover {
-    color: #ffffff;
-    background: rgba(255, 255, 255, 0.12);
-  }
-`;
-
-const ModalContentBody = styled.div`
-  padding: 20px 22px;
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-`;
-
-const InfoTipBox = styled.div`
-  display: flex;
-  gap: 10px;
-  align-items: flex-start;
-  padding: 10px 14px;
-  background: rgba(0, 195, 255, 0.08);
-  border: 1px solid rgba(0, 195, 255, 0.2);
-  border-radius: 10px;
-  font-size: 12px;
-  color: #94a3b8;
-  line-height: 1.4;
-
-  .tip-icon {
-    font-size: 18px;
-    color: #38bdf8;
-    flex-shrink: 0;
-    margin-top: 1px;
+    font-size: 12px;
+    margin: 0;
   }
 `;
 
 const FormGroup = styled.div`
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
+  margin-bottom: 18px;
+`;
 
-  label {
-    font-size: 13px;
-    font-weight: 600;
-    color: #e2e8f0;
+const Label = styled.label`
+  font-size: 13px;
+  font-weight: 500;
+  color: #cbd5e1;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+
+  .icon {
+    color: #00c3ff;
+    font-size: 16px;
+  }
+
+  .req {
+    color: #ef4444;
   }
 `;
 
-const TextareaNota = styled.textarea`
+const ComboboxInputWrapper = styled.div`
+  position: relative;
   width: 100%;
-  padding: 12px 14px;
-  background: rgba(15, 23, 42, 0.8);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 10px;
+
+  .search-icon {
+    position: absolute;
+    left: 14px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: #94a3b8;
+    font-size: 18px;
+  }
+`;
+
+const SearchInput = styled.input`
+  width: 100%;
+  padding: 13px 14px 13px 42px;
+  background: rgba(15, 23, 42, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
   color: #ffffff;
-  font-size: 13px;
-  font-family: inherit;
+  font-size: 14px;
   outline: none;
-  resize: vertical;
-  line-height: 1.5;
   box-sizing: border-box;
 
   &:focus {
-    border-color: #c084fc;
-    box-shadow: 0 0 12px rgba(168, 85, 247, 0.25);
+    border-color: #00c3ff;
+    box-shadow: 0 0 12px rgba(0, 195, 255, 0.25);
   }
 `;
 
-const ModalFooter = styled.div`
-  display: flex;
-  justify-content: flex-end;
-  gap: 12px;
-  padding: 16px 22px;
-  background: rgba(15, 23, 42, 0.6);
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
+const SpinnerInline = styled.div`
+  position: absolute;
+  right: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(0, 195, 255, 0.3);
+  border-top-color: #00c3ff;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
 `;
 
-const BtnCancelar = styled.button`
-  background: transparent;
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  color: #94a3b8;
-  padding: 9px 18px;
-  border-radius: 10px;
-  font-size: 13px;
-  font-weight: 600;
+const ComboboxDropdown = styled.div`
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  margin-top: 6px;
+  background: #111827;
+  border: 1px solid rgba(0, 195, 255, 0.3);
+  border-radius: 12px;
+  max-height: 240px;
+  overflow-y: auto;
+  z-index: 50;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.6);
+`;
+
+const ComboboxItem = styled.div`
+  padding: 10px 14px;
   cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  background: ${(props) => (props.$selected ? "rgba(0, 195, 255, 0.15)" : "transparent")};
 
   &:hover {
-    color: #ffffff;
-    border-color: rgba(255, 255, 255, 0.3);
+    background: rgba(0, 195, 255, 0.1);
+  }
+
+  .item-plate {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+
+    .plate-badge {
+      background: rgba(0, 195, 255, 0.2);
+      color: #38bdf8;
+      font-size: 11px;
+      font-weight: 700;
+      padding: 2px 6px;
+      border-radius: 4px;
+      letter-spacing: 0.5px;
+    }
+
+    .driver-name {
+      color: #ffffff;
+      font-size: 13px;
+      font-weight: 500;
+    }
+  }
+
+  .item-specs {
+    font-size: 12px;
+    color: #94a3b8;
   }
 `;
 
-const BtnGuardar = styled.button`
-  display: inline-flex;
+const DropdownEmpty = styled.div`
+  padding: 16px;
+  text-align: center;
+  color: #94a3b8;
+  font-size: 13px;
+`;
+
+const SelectedTruckPill = styled.div`
+  display: flex;
   align-items: center;
-  gap: 6px;
-  background: linear-gradient(135deg, #a855f7 0%, #7c3aed 100%);
+  gap: 10px;
+  margin-top: 8px;
+  padding: 10px 14px;
+  background: rgba(0, 195, 255, 0.08);
+  border: 1px solid rgba(0, 195, 255, 0.25);
+  border-radius: 10px;
+
+  .pill-icon {
+    color: #38bdf8;
+    font-size: 18px;
+    flex-shrink: 0;
+  }
+
+  .pill-info {
+    font-size: 13px;
+    color: #ffffff;
+
+    .sub {
+      display: block;
+      font-size: 11px;
+      color: #94a3b8;
+      margin-top: 2px;
+    }
+  }
+`;
+
+const Input = styled.input`
+  width: 100%;
+  padding: 12px 14px;
+  background: rgba(15, 23, 42, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  color: #ffffff;
+  font-size: 14px;
+  outline: none;
+  box-sizing: border-box;
+
+  &:focus {
+    border-color: #00c3ff;
+    box-shadow: 0 0 12px rgba(0, 195, 255, 0.25);
+  }
+`;
+
+const Select = styled.select`
+  width: 100%;
+  padding: 12px 14px;
+  background: rgba(15, 23, 42, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  color: #ffffff;
+  font-size: 14px;
+  outline: none;
+  box-sizing: border-box;
+
+  option {
+    background: #111827;
+    color: #ffffff;
+  }
+`;
+
+const TextArea = styled.textarea`
+  width: 100%;
+  padding: 12px 14px;
+  background: rgba(15, 23, 42, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  color: #ffffff;
+  font-size: 13px;
+  outline: none;
+  resize: vertical;
+  box-sizing: border-box;
+
+  &:focus {
+    border-color: #00c3ff;
+  }
+`;
+
+const TypeSelectorGrid = styled.div`
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+
+  @media (max-width: 500px) {
+    grid-template-columns: 1fr;
+  }
+`;
+
+const TypeButton = styled.button`
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.2s;
+  text-align: left;
+  border: 1px solid
+    ${(props) =>
+      props.$active
+        ? props.$variant === "success"
+          ? "#22c55e"
+          : "#eab308"
+        : "rgba(255, 255, 255, 0.08)"};
+  background: ${(props) =>
+    props.$active
+      ? props.$variant === "success"
+        ? "rgba(34, 197, 94, 0.15)"
+        : "rgba(234, 179, 8, 0.15)"
+      : "rgba(15, 23, 42, 0.6)"};
+
+  .btn-icon {
+    font-size: 22px;
+    color: ${(props) => (props.$variant === "success" ? "#22c55e" : "#eab308")};
+    flex-shrink: 0;
+  }
+
+  .btn-text {
+    .btn-title {
+      display: block;
+      font-size: 13px;
+      font-weight: 700;
+      color: #ffffff;
+    }
+    .btn-desc {
+      display: block;
+      font-size: 11px;
+      color: #94a3b8;
+      margin-top: 2px;
+    }
+  }
+`;
+
+const PaymentFieldsBox = styled.div`
+  background: rgba(15, 23, 42, 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 14px;
+  padding: 16px;
+  margin-bottom: 18px;
+`;
+
+const PaymentFieldsGrid = styled.div`
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+
+  @media (max-width: 600px) {
+    grid-template-columns: 1fr;
+  }
+`;
+
+const PhotoUploadContainer = styled.div`
+  margin-top: 4px;
+`;
+
+const UploadDropzone = styled.div`
+  border: 1px dashed rgba(255, 255, 255, 0.15);
+  border-radius: 12px;
+  padding: 16px;
+  text-align: center;
+  background: rgba(15, 23, 42, 0.4);
+  transition: all 0.2s;
+
+  &:hover {
+    border-color: #00c3ff;
+    background: rgba(0, 195, 255, 0.05);
+  }
+
+  input[type="file"] {
+    display: none;
+  }
+
+  label {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+    color: #94a3b8;
+    font-size: 12px;
+
+    .upload-icon {
+      font-size: 24px;
+      color: #00c3ff;
+    }
+  }
+`;
+
+const PhotoPreviewWrapper = styled.div`
+  position: relative;
+  display: inline-block;
+
+  img {
+    max-width: 140px;
+    max-height: 100px;
+    border-radius: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    object-fit: cover;
+  }
+`;
+
+const RemovePhotoBtn = styled.button`
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  background: rgba(239, 68, 68, 0.85);
+  color: white;
+  border: none;
+  border-radius: 6px;
+  padding: 2px 6px;
+  font-size: 10px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+`;
+
+const SubmitBtn = styled.button`
+  width: 100%;
+  padding: 16px;
+  background: linear-gradient(135deg, #00c3ff 0%, #0072ff 100%);
   color: #ffffff;
   border: none;
-  padding: 9px 20px;
-  border-radius: 10px;
-  font-size: 13px;
+  border-radius: 14px;
+  font-size: 15px;
   font-weight: 700;
   cursor: pointer;
-  box-shadow: 0 4px 15px rgba(168, 85, 247, 0.35);
+  transition: all 0.2s ease;
+  box-shadow: 0 4px 15px rgba(0, 195, 255, 0.3);
 
-  &:hover {
-    transform: translateY(-1px);
-    box-shadow: 0 6px 20px rgba(168, 85, 247, 0.5);
+  &:hover:not(:disabled) {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 25px rgba(0, 195, 255, 0.45);
   }
 
   &:disabled {
-    opacity: 0.6;
+    background: #334155;
+    color: #94a3b8;
     cursor: not-allowed;
+    box-shadow: none;
   }
 `;
 
-const ImageLightbox = styled.div`
-  background: #0f172a;
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  border-radius: 16px;
-  overflow: hidden;
-  max-width: 600px;
-  width: 100%;
-  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.8);
+const SidebarPanel = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+`;
 
-  .lightbox-header {
+const LastRecordCard = styled.div`
+  background: rgba(21, 28, 45, 0.75);
+  backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 18px;
+  padding: 20px;
+
+  .card-head {
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    padding: 14px 18px;
-    background: rgba(30, 41, 59, 0.8);
-    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    gap: 8px;
+    margin-bottom: 14px;
 
-    h4 {
-      margin: 0;
-      font-size: 14px;
-      color: #ffffff;
+    .head-icon {
+      color: #38bdf8;
+      font-size: 18px;
     }
 
-    button {
-      background: transparent;
-      border: none;
-      color: #94a3b8;
-      cursor: pointer;
-      font-size: 20px;
-      display: flex;
-      align-items: center;
-
-      &:hover {
-        color: #ffffff;
-      }
+    h4 {
+      color: #ffffff;
+      font-size: 14px;
+      font-weight: 700;
+      margin: 0;
     }
   }
 
-  img {
-    width: 100%;
-    max-height: 75vh;
-    object-fit: contain;
-    display: block;
-    background: #000;
+  .record-details {
+    .record-badge-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 14px;
+
+      .status-tag {
+        font-size: 11px;
+        font-weight: 700;
+        padding: 3px 8px;
+        border-radius: 6px;
+
+        &.pagado {
+          background: rgba(34, 197, 94, 0.2);
+          color: #86efac;
+        }
+
+        &.pendiente {
+          background: rgba(234, 179, 8, 0.2);
+          color: #fef08a;
+        }
+      }
+
+      .amount {
+        font-size: 18px;
+        font-weight: 800;
+        color: #ffffff;
+      }
+    }
+
+    .record-info-line {
+      display: flex;
+      justify-content: space-between;
+      font-size: 12px;
+      padding: 6px 0;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+
+      .lbl {
+        color: #94a3b8;
+      }
+
+      strong,
+      span {
+        color: #ffffff;
+      }
+    }
+
+    .record-footer {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      margin-top: 12px;
+      font-size: 11px;
+      color: #64748b;
+    }
+  }
+
+  .no-record {
+    text-align: center;
+    padding: 20px 0;
+    color: #64748b;
+
+    .water-ico {
+      font-size: 28px;
+      color: rgba(0, 195, 255, 0.3);
+      margin-bottom: 6px;
+    }
+
+    p {
+      font-size: 12px;
+      margin: 0;
+    }
+  }
+`;
+
+const InstructionCard = styled.div`
+  background: rgba(15, 23, 42, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 16px;
+  padding: 18px;
+
+  h5 {
+    color: #38bdf8;
+    font-size: 13px;
+    font-weight: 700;
+    margin: 0 0 10px 0;
+  }
+
+  ul {
+    margin: 0;
+    padding-left: 16px;
+    color: #94a3b8;
+    font-size: 12px;
+    line-height: 1.6;
+
+    li {
+      margin-bottom: 6px;
+    }
+
+    strong {
+      color: #e2e8f0;
+    }
   }
 `;

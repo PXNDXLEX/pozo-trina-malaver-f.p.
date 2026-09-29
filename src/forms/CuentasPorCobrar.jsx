@@ -62,13 +62,40 @@ export function CuentasPorCobrar() {
         .order("fecha_carga", { ascending: false });
 
       if (user?.role === "camionero" && user?.id) {
-        // Obtener únicamente los camiones asignados a este perfil de camionero
+        // Obtener todos los camiones asignados a este perfil (directo o por tabla camioneros)
+        let idsAsignados = [];
         const { data: misCamiones } = await supabase
           .from("camiones")
           .select("id")
           .eq("perfil_id", user.id);
 
-        const idsAsignados = (misCamiones || []).map((c) => c.id);
+        if (misCamiones) {
+          idsAsignados.push(...misCamiones.map((c) => c.id));
+        }
+
+        try {
+          const { data: cRow } = await supabase
+            .from("camioneros")
+            .select("id")
+            .eq("perfil_id", user.id)
+            .maybeSingle();
+
+          if (cRow?.id) {
+            const { data: camionesDeCamionero } = await supabase
+              .from("camiones")
+              .select("id")
+              .eq("camionero_id", cRow.id);
+
+            if (camionesDeCamionero) {
+              idsAsignados.push(...camionesDeCamionero.map((c) => c.id));
+            }
+          }
+        } catch (e) {
+          // fallback si la tabla camioneros no existe aún
+        }
+
+        idsAsignados = [...new Set(idsAsignados)];
+
         if (idsAsignados.length === 0) {
           // Si el chofer no tiene ningún camión asignado, no debe ver deudas de ningún otro camión
           setDeudas([]);
