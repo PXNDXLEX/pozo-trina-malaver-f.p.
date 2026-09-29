@@ -14,10 +14,10 @@ export function MyRoutes(){
 
       </Route>
 
-      {/* 🔐 PANTALLAS COMPARTIDAS: Ambos roles pueden ingresar aquí */}
+      {/* 🔐 PANTALLAS COMPARTIDAS: Administrador y Registrador */}
       <Route element={<ProtectedRoute rolesPermitidos={["administrador", "registrador"]} />}>
+        <Route path="/home" element={<Home />} />
         <Route path="/camion" element={<Regcamion />} />
-        
       </Route>
 
        <Route element={<ProtectedRoute rolesPermitidos={["administrador","camionero"]} />}>
@@ -26,7 +26,6 @@ export function MyRoutes(){
       </Route>
       {/* 👑 PANTALLAS EXCLUSIVAS: Solo el Administrador puede ingresar */}
       <Route element={<ProtectedRoute rolesPermitidos={["administrador"]} />}>
-       <Route path="/home" element={<Home />} />
         <Route path="/listcamion" element={<ListaCamion />} />
         <Route path="/contabilidad" element={<Contabilidad />} />
         <Route path="/detalle-recarga" element={<ListVentas />} />

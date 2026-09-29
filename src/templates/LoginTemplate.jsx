@@ -59,8 +59,6 @@ export function LoginTemplate() {
 
       if (rolAsignado === "camionero") {
         navigate("/recarga");
-      } else if (rolAsignado === "registrador") {
-        navigate("/camion");
       } else {
         navigate("/home");
       }

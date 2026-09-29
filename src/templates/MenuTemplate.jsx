@@ -3,6 +3,7 @@ import styled from "styled-components";
 import { useAuthStore } from "../store/AuthStore";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { supabase } from "../supabase/supabase.config";
+import { ModalRegistrarRecarga } from "../components/ModalRegistrarRecarga";
 import {
   MdDashboard,
   MdLocalShipping,
@@ -30,6 +31,7 @@ export function MenuTemplate({ children }) {
   const [activeDropdown, setActiveDropdown] = useState(null);
   const [mobileSheet, setMobileSheet] = useState(null);
   const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [modalRecargaNav, setModalRecargaNav] = useState(false);
   const [nuevaClave, setNuevaClave] = useState("");
   const [confirmarClave, setConfirmarClave] = useState("");
   const [loadingClave, setLoadingClave] = useState(false);
@@ -137,7 +139,7 @@ export function MenuTemplate({ children }) {
     <Container>
       {/* 🖥️ DESKTOP TOP BAR */}
       <DesktopTopBar ref={dropdownRef}>
-        <BrandContainer to={user?.role === "administrador" ? "/home" : "/recarga"}>
+        <BrandContainer to={user?.role === "camionero" ? "/recarga" : "/home"}>
           <LogoBadge>💧</LogoBadge>
           <BrandTitle>
             Pozo Trina <span>Malaver F.P.</span>
@@ -145,10 +147,16 @@ export function MenuTemplate({ children }) {
         </BrandContainer>
 
         <NavGroup>
-          {user?.role === "administrador" && (
+          {user?.role !== "camionero" && (
             <NavLink to="/home" className={location.pathname === "/home" ? "active" : ""}>
               <MdDashboard className="nav-icon" /> Dashboard
             </NavLink>
+          )}
+
+          {user?.role !== "camionero" && (
+            <BotonModalRecargaNav type="button" onClick={() => setModalRecargaNav(true)}>
+              <MdWaterDrop /> Nueva Recarga
+            </BotonModalRecargaNav>
           )}
 
           {user?.role !== "camionero" && (
@@ -185,8 +193,19 @@ export function MenuTemplate({ children }) {
 
             {activeDropdown === "ventas" && (
               <DropdownMenu>
+                {user?.role !== "camionero" && (
+                  <DropdownButtonAction
+                    type="button"
+                    onClick={() => {
+                      setModalRecargaNav(true);
+                      setActiveDropdown(null);
+                    }}
+                  >
+                    <MdWaterDrop /> Registrar Recarga (Modal)
+                  </DropdownButtonAction>
+                )}
                 <DropdownItem to="/recarga" className={location.pathname === "/recarga" ? "active" : ""}>
-                  <MdAddCircleOutline /> Registro de Recargas
+                  <MdAddCircleOutline /> Registro en Lote / Clásico
                 </DropdownItem>
                 {user?.role === "administrador" && (
                   <>
@@ -280,7 +299,7 @@ export function MenuTemplate({ children }) {
 
       {/* 📱 MOBILE BOTTOM NAVIGATION BAR */}
       <MobileBottomNav>
-        {user?.role === "administrador" && (
+        {user?.role !== "camionero" && (
           <NavItemMobile to="/home" className={location.pathname === "/home" ? "active" : ""}>
             <MdDashboard />
             <span>Dashboard</span>
@@ -371,8 +390,19 @@ export function MenuTemplate({ children }) {
 
               {mobileSheet === "ventas" && (
                 <>
+                  {user?.role !== "camionero" && (
+                    <SheetButtonAction
+                      type="button"
+                      onClick={() => {
+                        setModalRecargaNav(true);
+                        setMobileSheet(null);
+                      }}
+                    >
+                      <MdWaterDrop /> Registrar Recarga (Modal)
+                    </SheetButtonAction>
+                  )}
                   <Link to="/recarga">
-                    <MdAddCircleOutline /> Nueva Recarga / Venta
+                    <MdAddCircleOutline /> Nueva Recarga / Venta en Lote
                   </Link>
                   {user?.role === "administrador" && (
                     <>
@@ -445,6 +475,12 @@ export function MenuTemplate({ children }) {
           </ModalContent>
         </ModalOverlay>
       )}
+
+      {/* 💧 MODAL GLOBAL DE RECARGA DE AGUA */}
+      <ModalRegistrarRecarga
+        isOpen={modalRecargaNav}
+        onClose={() => setModalRecargaNav(false)}
+      />
     </Container>
   );
 }
@@ -626,6 +662,57 @@ const DropdownItem = styled(Link)`
     color: #ffffff;
     background: rgba(0, 195, 255, 0.2);
     font-weight: 600;
+  }
+`;
+
+const DropdownButtonAction = styled.button`
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: rgba(0, 195, 255, 0.15);
+  border: 1px solid rgba(0, 195, 255, 0.3);
+  color: #00c3ff;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: left;
+  transition: all 0.15s ease;
+
+  svg {
+    font-size: 16px;
+  }
+
+  &:hover {
+    background: #00c3ff;
+    color: #0b0f19;
+  }
+`;
+
+const BotonModalRecargaNav = styled.button`
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  background: linear-gradient(135deg, #00c3ff 0%, #0072ff 100%);
+  color: #ffffff;
+  border: none;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 2px 10px rgba(0, 195, 255, 0.3);
+  transition: all 0.2s ease;
+
+  svg {
+    font-size: 16px;
+  }
+
+  &:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 15px rgba(0, 195, 255, 0.45);
   }
 `;
 
@@ -899,6 +986,32 @@ const SheetOptions = styled.div`
       background: rgba(0, 195, 255, 0.15);
       border-color: rgba(0, 195, 255, 0.4);
     }
+  }
+`;
+
+const SheetButtonAction = styled.button`
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 14px 16px;
+  background: linear-gradient(135deg, rgba(0, 195, 255, 0.2), rgba(0, 114, 255, 0.2));
+  border: 1px solid rgba(0, 195, 255, 0.4);
+  border-radius: 12px;
+  color: #38bdf8;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  text-align: left;
+  box-sizing: border-box;
+
+  svg {
+    font-size: 20px;
+    color: #00c3ff;
+  }
+
+  &:active {
+    background: rgba(0, 195, 255, 0.35);
   }
 `;
 
