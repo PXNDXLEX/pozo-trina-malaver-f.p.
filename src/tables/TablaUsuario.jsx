@@ -798,7 +798,7 @@ export function TablaUsuario() {
               </button>
             </ModalTrucksHeader>
 
-            <form onSubmit={handleGuardarModificacionCamionero}>
+            <ModalTrucksForm onSubmit={handleGuardarModificacionCamionero}>
               <ModalTrucksBody>
                 {cargandoModalCamionero ? (
                   <div style={{ padding: "40px", textAlign: "center", color: "#94a3b8" }}>
@@ -1106,7 +1106,7 @@ export function TablaUsuario() {
                   {guardandoModalCamionero ? "Guardando Cambios..." : "💾 Guardar Todos los Cambios"}
                 </button>
               </ModalTrucksFooter>
-            </form>
+            </ModalTrucksForm>
           </ModalTrucksContainer>
         </ModalOverlay>
       )}
@@ -1520,13 +1520,14 @@ const CardForm = styled.div`
 const ModalOverlay = styled.div`
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.8);
+  background: rgba(0, 0, 0, 0.85);
   backdrop-filter: blur(8px);
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 1000;
   padding: 16px;
+  overflow-y: auto;
 `;
 
 const ModalContent = styled.div`
@@ -1634,21 +1635,33 @@ const ModalTrucksContainer = styled.div`
   border: 1px solid rgba(0, 195, 255, 0.3);
   border-radius: 20px;
   width: 100%;
-  max-width: 780px;
+  max-width: 800px;
+  height: 90vh;
   max-height: 90vh;
   display: flex;
   flex-direction: column;
   overflow: hidden;
   box-shadow: 0 25px 60px rgba(0, 0, 0, 0.8), 0 0 30px rgba(0, 195, 255, 0.15);
   animation: scaleUp 0.25s ease;
+  position: relative;
+`;
+
+const ModalTrucksForm = styled.form`
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
 `;
 
 const ModalTrucksHeader = styled.div`
+  flex-shrink: 0;
   display: flex;
   justify-content: space-between;
   align-items: center;
   padding: 20px 26px;
-  background: rgba(15, 23, 42, 0.85);
+  background: rgba(15, 23, 42, 0.95);
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
 
   .title-box {
@@ -1702,10 +1715,28 @@ const ModalTrucksHeader = styled.div`
 
 const ModalTrucksBody = styled.div`
   padding: 22px 26px;
+  flex: 1;
+  min-height: 0;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: 20px;
+
+  /* Estilos para el scrollbar */
+  &::-webkit-scrollbar {
+    width: 8px;
+  }
+  &::-webkit-scrollbar-track {
+    background: rgba(15, 23, 42, 0.7);
+    border-radius: 4px;
+  }
+  &::-webkit-scrollbar-thumb {
+    background: rgba(0, 195, 255, 0.4);
+    border-radius: 4px;
+    &:hover {
+      background: rgba(0, 195, 255, 0.7);
+    }
+  }
 `;
 
 const SectionBox = styled.div`
@@ -1931,11 +1962,12 @@ const LinkAvailableBox = styled.div`
 `;
 
 const ModalTrucksFooter = styled.div`
+  flex-shrink: 0;
   display: flex;
   justify-content: flex-end;
   gap: 12px;
   padding: 16px 26px;
-  background: rgba(15, 23, 42, 0.85);
+  background: rgba(15, 23, 42, 0.95);
   border-top: 1px solid rgba(255, 255, 255, 0.08);
 
   .btn-close-modal {
