@@ -62,8 +62,21 @@ export function CuentasPorCobrar() {
         .order("fecha_carga", { ascending: false });
 
       if (user?.role === "camionero" && user?.id) {
-        // Si es camionero, solo ve las deudas asociadas a su perfil
-        queryBuilder = queryBuilder.eq("camiones.perfil_id", user.id);
+        // Obtener únicamente los camiones asignados a este perfil de camionero
+        const { data: misCamiones } = await supabase
+          .from("camiones")
+          .select("id")
+          .eq("perfil_id", user.id);
+
+        const idsAsignados = (misCamiones || []).map((c) => c.id);
+        if (idsAsignados.length === 0) {
+          // Si el chofer no tiene ningún camión asignado, no debe ver deudas de ningún otro camión
+          setDeudas([]);
+          setLoading(false);
+          return;
+        }
+
+        queryBuilder = queryBuilder.in("camion_id", idsAsignados);
       }
 
       const { data, error } = await queryBuilder;

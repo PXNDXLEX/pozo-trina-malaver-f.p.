@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import styled from "styled-components";
 import { supabase } from "../supabase/supabase.config";
 import { useAuthStore } from "../store/AuthStore";
@@ -13,12 +13,17 @@ import {
   MdHourglassEmpty,
   MdDeleteOutline,
   MdEditNote,
+  MdSearch,
 } from "react-icons/md";
 
 export function ModalRegistrarRecarga({ isOpen, onClose, onRecargaExitosa }) {
   const user = useAuthStore((state) => state.user);
   const [camiones, setCamiones] = useState([]);
   const [camionSeleccionadoId, setCamionSeleccionadoId] = useState("");
+  const [busquedaCamion, setBusquedaCamion] = useState("");
+  const [mostrarMenuCamiones, setMostrarMenuCamiones] = useState(false);
+  const comboboxRef = useRef(null);
+
   const [monto, setMonto] = useState("");
   const [nota, setNota] = useState("");
   
@@ -44,10 +49,21 @@ export function ModalRegistrarRecarga({ isOpen, onClose, onRecargaExitosa }) {
     }
   }, [isOpen]);
 
+  // Cierre de menú al hacer clic afuera
+  useEffect(() => {
+    function handleClickOutside(e) {
+      if (comboboxRef.current && !comboboxRef.current.contains(e.target)) {
+        setMostrarMenuCamiones(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
   const cargarCamiones = async () => {
     setCargandoCamiones(true);
     try {
-      // Si el usuario es camionero, filtrar prioritariamente su camión asignado
+      // Si el usuario es camionero, filtrar estrictamente su camión asignado
       if (user?.role === "camionero" && user?.id) {
         const { data: misCamiones } = await supabase
           .from("camiones")
@@ -57,10 +73,18 @@ export function ModalRegistrarRecarga({ isOpen, onClose, onRecargaExitosa }) {
         if (misCamiones && misCamiones.length > 0) {
           setCamiones(misCamiones);
           setCamionSeleccionadoId(misCamiones[0].id);
+          setBusquedaCamion(`${misCamiones[0].placa} — ${misCamiones[0].chofer}`);
+          return;
+        } else {
+          // Si el camionero NO tiene camión asignado, no mostrar camiones ajenos
+          setCamiones([]);
+          setCamionSeleccionadoId("");
+          setBusquedaCamion("");
           return;
         }
       }
 
+      // Para Administrador y Registrador, cargar lista completa
       const { data, error } = await supabase
         .from("camiones")
         .select("id, placa, chofer, capacidad, modelo")
@@ -68,9 +92,6 @@ export function ModalRegistrarRecarga({ isOpen, onClose, onRecargaExitosa }) {
 
       if (error) throw error;
       setCamiones(data || []);
-      if (user?.role === "camionero" && data && data.length === 1) {
-        setCamionSeleccionadoId(data[0].id);
-      }
     } catch (err) {
       console.error("Error al cargar camiones:", err.message);
     } finally {
@@ -81,7 +102,9 @@ export function ModalRegistrarRecarga({ isOpen, onClose, onRecargaExitosa }) {
   const limpiarCampos = () => {
     if (user?.role !== "camionero") {
       setCamionSeleccionadoId("");
+      setBusquedaCamion("");
     }
+    setMostrarMenuCamiones(false);
     setMonto("");
     setNota("");
     setFotoCamion(null);
@@ -233,6 +256,18 @@ export function ModalRegistrarRecarga({ isOpen, onClose, onRecargaExitosa }) {
     }
   };
 
+  const camionesFiltrados = useMemo(() => {
+    if (!busquedaCamion.trim()) return camiones;
+    const q = busquedaCamion.toLowerCase().trim();
+    return camiones.filter(
+      (c) =>
+        c.placa?.toLowerCase().includes(q) ||
+        c.chofer?.toLowerCase().includes(q) ||
+        c.modelo?.toLowerCase().includes(q) ||
+        String(c.capacidad).includes(q)
+    );
+  }, [camiones, busquedaCamion]);
+
   if (!isOpen) return null;
 
   const camionActual = camiones.find((c) => String(c.id) === String(camionSeleccionadoId));
@@ -255,29 +290,114 @@ export function ModalRegistrarRecarga({ isOpen, onClose, onRecargaExitosa }) {
 
         <Form onSubmit={handleSubmit}>
           <ModalBody>
-            {/* 1. SELECCIONAR CAMIÓN */}
-            <FormGroup>
+            {/* 1. SELECCIONAR CAMIÓN CON CUADRO DE BÚSQUEDA DINÁMICA */}
+            <FormGroup ref={comboboxRef} style={{ position: "relative" }}>
               <Label>
-                <MdLocalShipping className="icon" /> Selecciona el Camión Cisterna: <span className="req">*</span>
+                <MdLocalShipping className="icon" /> Buscar y Seleccionar Camión Cisterna: <span className="req">*</span>
               </Label>
-              <Select
-                value={camionSeleccionadoId}
-                onChange={(e) => setCamionSeleccionadoId(e.target.value)}
-                required
-              >
-                <option value="">-- Elige un camión registrado --</option>
-                {camiones.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.placa} — Chofer: {c.chofer} ({c.capacidad} Lts {c.modelo ? `- ${c.modelo}` : ""})
-                  </option>
-                ))}
-              </Select>
-              {camionActual && (
-                <CamionInfoPill>
-                  <span><strong>Placa:</strong> {camionActual.placa}</span>
-                  <span><strong>Chofer:</strong> {camionActual.chofer}</span>
-                  <span><strong>Capacidad:</strong> {camionActual.capacidad} Lts</span>
-                </CamionInfoPill>
+
+              {user?.role === "camionero" && camiones.length === 0 && !cargandoCamiones ? (
+                <AlertaSinCamionModal>
+                  ⚠️ Tu cuenta de chofer no tiene ningún camión cisterna vinculado. Contacta al administrador para asignar tu unidad.
+                </AlertaSinCamionModal>
+              ) : (
+                <>
+                  <SearchBoxWrapper>
+                    <MdSearch className="search-ico" />
+                    <SearchInput
+                      type="text"
+                      placeholder="Escribe para buscar por placa o chofer (ej: A23, Carlos)..."
+                      value={busquedaCamion}
+                      onChange={(e) => {
+                        setBusquedaCamion(e.target.value);
+                        setMostrarMenuCamiones(true);
+                        if (camionSeleccionadoId) {
+                          setCamionSeleccionadoId("");
+                        }
+                      }}
+                      onFocus={() => {
+                        if (user?.role !== "camionero" || camiones.length > 1) {
+                          setMostrarMenuCamiones(true);
+                        }
+                      }}
+                      disabled={user?.role === "camionero" && camiones.length === 1}
+                      required={!camionSeleccionadoId}
+                    />
+                    {busquedaCamion && user?.role !== "camionero" && (
+                      <ClearBtn
+                        type="button"
+                        onClick={() => {
+                          setBusquedaCamion("");
+                          setCamionSeleccionadoId("");
+                          setMostrarMenuCamiones(true);
+                        }}
+                        title="Borrar texto de búsqueda"
+                      >
+                        <MdClose />
+                      </ClearBtn>
+                    )}
+                  </SearchBoxWrapper>
+
+                  {/* LISTA DINÁMICA FLOTANTE DE RESULTADOS */}
+                  {mostrarMenuCamiones && user?.role !== "camionero" && (
+                    <DynamicTruckDropdown>
+                      {cargandoCamiones ? (
+                        <DropdownItemNotice>Cargando lista de camiones...</DropdownItemNotice>
+                      ) : camionesFiltrados.length === 0 ? (
+                        <DropdownItemNotice>
+                          No se encontraron camiones que coincidan con "{busquedaCamion}"
+                        </DropdownItemNotice>
+                      ) : (
+                        camionesFiltrados.map((c) => {
+                          const isSelected = String(c.id) === String(camionSeleccionadoId);
+                          return (
+                            <TruckOptionItem
+                              key={c.id}
+                              type="button"
+                              $active={isSelected}
+                              onClick={() => {
+                                setCamionSeleccionadoId(c.id);
+                                setBusquedaCamion(`${c.placa} — Chofer: ${c.chofer}`);
+                                setMostrarMenuCamiones(false);
+                              }}
+                            >
+                              <div className="truck-row-main">
+                                <span className="placa-badge">{c.placa}</span>
+                                <span className="chofer-label">{c.chofer}</span>
+                              </div>
+                              <div className="truck-row-meta">
+                                <span className="cap-badge">💧 {Number(c.capacidad).toLocaleString()} Lts</span>
+                                {c.modelo && <span className="modelo-badge">{c.modelo}</span>}
+                              </div>
+                            </TruckOptionItem>
+                          );
+                        })
+                      )}
+                    </DynamicTruckDropdown>
+                  )}
+
+                  {/* FICHA CONFIRMATORIA DEL CAMIÓN SELECCIONADO */}
+                  {camionActual && (
+                    <CamionInfoPill>
+                      <span><strong>Placa:</strong> {camionActual.placa}</span>
+                      <span><strong>Chofer:</strong> {camionActual.chofer}</span>
+                      <span><strong>Capacidad:</strong> {camionActual.capacidad?.toLocaleString()} Lts</span>
+                      {camionActual.modelo && <span><strong>Modelo:</strong> {camionActual.modelo}</span>}
+                      {user?.role !== "camionero" && (
+                        <ChangeTruckBtn
+                          type="button"
+                          onClick={() => {
+                            setBusquedaCamion("");
+                            setCamionSeleccionadoId("");
+                            setMostrarMenuCamiones(true);
+                          }}
+                        >
+                          Cambiar
+                        </ChangeTruckBtn>
+                      )}
+                    </CamionInfoPill>
+                  )}
+                </>
               )}
             </FormGroup>
 
@@ -696,6 +816,170 @@ const Select = styled.select`
     border-color: #00c3ff;
     box-shadow: 0 0 10px rgba(0, 195, 255, 0.25);
   }
+`;
+
+const SearchBoxWrapper = styled.div`
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 100%;
+
+  .search-ico {
+    position: absolute;
+    left: 14px;
+    font-size: 18px;
+    color: #38bdf8;
+    pointer-events: none;
+  }
+`;
+
+const SearchInput = styled(Input)`
+  padding-left: 42px;
+  padding-right: 38px;
+  font-size: 14px;
+`;
+
+const ClearBtn = styled.button`
+  position: absolute;
+  right: 10px;
+  background: rgba(255, 255, 255, 0.08);
+  border: none;
+  color: #94a3b8;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 15px;
+
+  &:hover {
+    color: #ffffff;
+    background: rgba(255, 255, 255, 0.2);
+  }
+`;
+
+const DynamicTruckDropdown = styled.div`
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  margin-top: 6px;
+  background: #0f172a;
+  border: 1px solid rgba(0, 195, 255, 0.35);
+  border-radius: 12px;
+  max-height: 240px;
+  overflow-y: auto;
+  z-index: 1000;
+  box-shadow: 0 15px 35px rgba(0, 0, 0, 0.7);
+  display: flex;
+  flex-direction: column;
+  padding: 6px;
+  gap: 4px;
+
+  &::-webkit-scrollbar {
+    width: 6px;
+  }
+  &::-webkit-scrollbar-thumb {
+    background: rgba(0, 195, 255, 0.3);
+    border-radius: 4px;
+  }
+`;
+
+const TruckOptionItem = styled.button`
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 10px 12px;
+  background: ${({ $active }) => ($active ? "rgba(0, 195, 255, 0.18)" : "transparent")};
+  border: 1px solid ${({ $active }) => ($active ? "rgba(0, 195, 255, 0.4)" : "transparent")};
+  border-radius: 8px;
+  cursor: pointer;
+  text-align: left;
+  transition: all 0.15s ease;
+
+  &:hover {
+    background: rgba(0, 195, 255, 0.12);
+    border-color: rgba(0, 195, 255, 0.3);
+  }
+
+  .truck-row-main {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+
+    .placa-badge {
+      font-weight: 700;
+      color: #38bdf8;
+      background: rgba(0, 195, 255, 0.12);
+      padding: 3px 8px;
+      border-radius: 6px;
+      font-size: 13px;
+      letter-spacing: 0.5px;
+    }
+
+    .chofer-label {
+      font-size: 13px;
+      color: #ffffff;
+      font-weight: 500;
+    }
+  }
+
+  .truck-row-meta {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+
+    .cap-badge {
+      font-size: 11px;
+      color: #cbd5e1;
+      background: rgba(255, 255, 255, 0.05);
+      padding: 2px 6px;
+      border-radius: 4px;
+    }
+
+    .modelo-badge {
+      font-size: 11px;
+      color: #64748b;
+    }
+  }
+`;
+
+const DropdownItemNotice = styled.div`
+  padding: 18px 12px;
+  text-align: center;
+  font-size: 12px;
+  color: #94a3b8;
+`;
+
+const ChangeTruckBtn = styled.button`
+  margin-left: auto;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: #38bdf8;
+  padding: 3px 8px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+
+  &:hover {
+    background: rgba(0, 195, 255, 0.2);
+    border-color: #00c3ff;
+    color: #ffffff;
+  }
+`;
+
+const AlertaSinCamionModal = styled.div`
+  padding: 12px 14px;
+  background: rgba(245, 158, 11, 0.12);
+  border: 1px solid rgba(245, 158, 11, 0.35);
+  border-radius: 10px;
+  color: #fbbf24;
+  font-size: 13px;
+  line-height: 1.4;
 `;
 
 const CamionInfoPill = styled.div`

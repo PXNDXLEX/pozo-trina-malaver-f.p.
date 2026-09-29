@@ -97,38 +97,7 @@ export function DashboardRegistrador() {
       const { data, error } = await query;
 
       if (!error) {
-        // Si no arrojó error pero data está vacía y el usuario tiene registros viejos sin usuario_id asignado,
-        // intentamos ver si existen registros generales
-        if ((!data || data.length === 0) && user?.id) {
-          const { data: todosData, error: errTodos } = await supabase
-            .from("registros_carga")
-            .select(`
-              id,
-              camion_id,
-              monto,
-              metodo,
-              referencia,
-              fecha_carga,
-              url_foto,
-              estatus,
-              usuario_id,
-              nota,
-              camiones ( id, chofer, placa, capacidad, modelo )
-            `)
-            .order("fecha_carga", { ascending: false })
-            .limit(100);
-
-          if (!errTodos && todosData && todosData.length > 0) {
-            // Verificar si ningún registro tiene usuario_id en la base de datos
-            const algunoTieneUsuario = todosData.some((r) => r.usuario_id);
-            if (!algunoTieneUsuario) {
-              setRegistros(todosData);
-              setColumnaNotaDisponible(true);
-              return;
-            }
-          }
-        }
-
+        // Mostrar estrictamente solo los registros del usuario registrado
         setRegistros(data || []);
         setColumnaNotaDisponible(true);
         return;
@@ -136,32 +105,8 @@ export function DashboardRegistrador() {
 
       console.warn("Fallo consulta con columnas nuevas (usuario_id/nota):", error.message);
 
-      // Fallback: si las columnas usuario_id o nota aún no existen en la BD
-      let fallbackQuery = supabase
-        .from("registros_carga")
-        .select(`
-          id,
-          camion_id,
-          monto,
-          metodo,
-          referencia,
-          fecha_carga,
-          url_foto,
-          estatus,
-          camiones ( id, chofer, placa, capacidad, modelo )
-        `)
-        .order("fecha_carga", { ascending: false });
-
-      if (filtroDias !== 3650) {
-        const fechaLimite = new Date();
-        fechaLimite.setDate(fechaLimite.getDate() - filtroDias);
-        fallbackQuery = fallbackQuery.gte("fecha_carga", fechaLimite.toISOString());
-      }
-
-      const { data: dataFallback, error: errFallback } = await fallbackQuery;
-      if (errFallback) throw errFallback;
-
-      setRegistros(dataFallback || []);
+      // Si la columna usuario_id aún no existe en Supabase, inicializar vacío
+      setRegistros([]);
       setColumnaNotaDisponible(false);
     } catch (err) {
       console.error("Error al cargar registros del registrador:", err);

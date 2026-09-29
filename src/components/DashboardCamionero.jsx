@@ -46,11 +46,17 @@ export function DashboardCamionero() {
         if (camionData) {
           camionAsignado = camionData;
           setMiCamion(camionData);
+        } else {
+          // Si el chofer NO tiene camión asignado, NO debe ver registros de ningún otro camión
+          setMiCamion(null);
+          setRegistros([]);
+          setLoading(false);
+          return;
         }
       }
 
-      // 2. Cargar recargas de este camión (o por usuario_id si existe)
-      let query = supabase
+      // 2. Cargar recargas ÚNICAMENTE de su camión asignado
+      const { data: cargasData, error } = await supabase
         .from("registros_carga")
         .select(`
           id,
@@ -64,21 +70,18 @@ export function DashboardCamionero() {
           nota,
           camiones ( id, chofer, placa, capacidad, modelo )
         `)
-        .order("fecha_carga", { ascending: false });
+        .eq("camion_id", camionAsignado.id)
+        .order("fecha_carga", { ascending: false })
+        .limit(50);
 
-      if (camionAsignado?.id) {
-        query = query.eq("camion_id", camionAsignado.id);
-      } else if (user?.id) {
-        // Si no tiene camión enlazado pero tiene usuario_id
-        query = query.eq("usuario_id", user.id);
-      }
-
-      const { data: cargasData, error } = await query.limit(50);
       if (!error && cargasData) {
         setRegistros(cargasData);
+      } else {
+        setRegistros([]);
       }
     } catch (err) {
       console.error("Error al cargar datos del camionero:", err);
+      setRegistros([]);
     } finally {
       setLoading(false);
     }
@@ -166,6 +169,19 @@ export function DashboardCamionero() {
           </TruckSummaryCard>
         )}
       </HeroCard>
+
+      {!miCamion && (
+        <AvisoSinCamion>
+          <div className="aviso-icon">⚠️</div>
+          <div className="aviso-body">
+            <h4>Cisterna No Asignada a tu Cuenta de Chofer</h4>
+            <p>
+              Tu usuario (<strong>{user?.name || "Chofer"}</strong>) aún no tiene un camión cisterna vinculado.
+              Para poder registrar recargas y ver tus viajes, un administrador debe ingresar a <strong>Camiones</strong> y asignar tu nombre en la unidad cisterna correspondiente.
+            </p>
+          </div>
+        </AvisoSinCamion>
+      )}
 
       {/* 📊 TARJETAS OPERATIVAS DEL CHOFER */}
       <CardsGrid>
@@ -898,5 +914,41 @@ const LightboxCard = styled.div`
     object-fit: contain;
     display: block;
     background: #000;
+  }
+`;
+
+const AvisoSinCamion = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  background: rgba(245, 158, 11, 0.1);
+  border: 1px solid rgba(245, 158, 11, 0.35);
+  border-radius: 16px;
+  padding: 18px 22px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+
+  .aviso-icon {
+    font-size: 32px;
+    flex-shrink: 0;
+  }
+
+  .aviso-body {
+    h4 {
+      margin: 0 0 4px 0;
+      color: #fbbf24;
+      font-size: 16px;
+      font-weight: 700;
+    }
+
+    p {
+      margin: 0;
+      font-size: 13px;
+      color: #e2e8f0;
+      line-height: 1.5;
+
+      strong {
+        color: #38bdf8;
+      }
+    }
   }
 `;
