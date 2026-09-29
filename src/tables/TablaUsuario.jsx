@@ -21,6 +21,8 @@ import {
   MdLink,
   MdLinkOff,
   MdCheckCircle,
+  MdAssignmentInd,
+  MdSwapHoriz,
 } from "react-icons/md";
 
 export function TablaUsuario() {
@@ -45,6 +47,10 @@ export function TablaUsuario() {
   const [modalTelefono, setModalTelefono] = useState("");
   const [modalRol, setModalRol] = useState("camionero");
   const [camioneroId, setCamioneroId] = useState(null);
+  const [camioneroOriginalId, setCamioneroOriginalId] = useState(null);
+  const [fichaCamioneroInfo, setFichaCamioneroInfo] = useState(null);
+  const [choferesDisponibles, setChoferesDisponibles] = useState([]);
+  const [choferSeleccionadoParaVincular, setChoferSeleccionadoParaVincular] = useState("");
 
   const [camionesAsignados, setCamionesAsignados] = useState([]);
   const [camionesNuevos, setCamionesNuevos] = useState([]);
@@ -166,102 +172,161 @@ export function TablaUsuario() {
     setCamionesDesvinculados([]);
     setCamionesDisponibles([]);
     setCamionParaVincularId("");
+    setChoferSeleccionadoParaVincular("");
+    setChoferesDisponibles([]);
+    setFichaCamioneroInfo(null);
     setCargandoModalCamionero(true);
 
     try {
-      // 1. Buscar la ficha en la tabla camioneros vinculada a este perfil_id o nombre
-      let foundCamioneroId = null;
-      let telefonoEncontrado = "";
-
+      // 1. Cargar todos los choferes registrados en la tabla camioneros
+      let todosChoferes = [];
       try {
-        const { data: cRow } = await supabase
+        const { data: cData } = await supabase
           .from("camioneros")
           .select("id, nombre, cedula, telefono, perfil_id")
-          .eq("perfil_id", usr.id)
-          .maybeSingle();
-
-        if (cRow) {
-          foundCamioneroId = cRow.id;
-          telefonoEncontrado = cRow.telefono || "";
-        } else if (usr.nombre) {
-          // Buscar por nombre si no tiene perfil_id enlazado aún
-          const { data: cRowNombre } = await supabase
-            .from("camioneros")
-            .select("id, nombre, cedula, telefono, perfil_id")
-            .ilike("nombre", usr.nombre.trim())
-            .maybeSingle();
-
-          if (cRowNombre) {
-            foundCamioneroId = cRowNombre.id;
-            telefonoEncontrado = cRowNombre.telefono || "";
-          }
-        }
+          .order("nombre", { ascending: true });
+        if (cData) todosChoferes = cData;
       } catch (errCamioneros) {
         console.warn("Tabla camioneros no disponible aún:", errCamioneros);
       }
 
-      setCamioneroId(foundCamioneroId);
-      setModalTelefono(telefonoEncontrado);
+      // Cargar todos los camiones para mapear relaciones y cantidades
+      let todosCamiones = [];
+      try {
+        const { data: tData } = await supabase
+          .from("camiones")
+          .select("id, placa, capacidad, modelo, chofer, camionero_id, perfil_id");
+        if (tData) todosCamiones = tData;
+      } catch (errCamiones) {
+        console.warn("Tabla camiones no disponible:", errCamiones);
+      }
 
-      // 2. Cargar camiones actualmente asignados a este chofer
+      // 2. Buscar si este usuario ya tiene una ficha en camioneros enlazada
+      let foundCamionero = null;
+      if (todosChoferes.length > 0) {
+        foundCamionero = todosChoferes.find((c) => c.perfil_id === usr.id);
+        if (!foundCamionero && usr.nombre) {
+          foundCamionero = todosChoferes.find(
+            (c) => (!c.perfil_id || c.perfil_id === usr.id) && c.nombre.trim().toLowerCase() === usr.nombre.trim().toLowerCase()
+          );
+        }
+      }
+
+      const foundCamioneroId = foundCamionero?.id || null;
+      const telefonoEncontrado = foundCamionero?.telefono || "";
+
+      setCamioneroId(foundCamioneroId);
+      setCamioneroOriginalId(foundCamioneroId);
+      setFichaCamioneroInfo(foundCamionero || null);
+      if (telefonoEncontrado) setModalTelefono(telefonoEncontrado);
+
+      // 3. Filtrar Choferes Disponibles:
+      // REGLA: Si este camionero ya está asignado a un usuario (perfil_id no nulo y distinto a usr.id), NO DEBE APARECER EN LA LISTA
+      const listaDisponibles = (todosChoferes || [])
+        .filter((c) => !c.perfil_id || c.perfil_id === usr.id)
+        .map((c) => {
+          const count = (todosCamiones || []).filter(
+            (t) => t.camionero_id === c.id || (!t.camionero_id && t.chofer && t.chofer.trim().toLowerCase() === c.nombre?.trim().toLowerCase())
+          ).length;
+          return {
+            ...c,
+            camionesCount: count,
+          };
+        });
+
+      setChoferesDisponibles(listaDisponibles);
+
+      // 4. Cargar camiones actualmente asignados a este chofer
       let assignedTrucks = [];
       if (foundCamioneroId) {
-        const { data: trucksByCamId } = await supabase
-          .from("camiones")
-          .select("id, placa, capacidad, modelo, chofer, camionero_id")
-          .eq("camionero_id", foundCamioneroId);
-
-        if (trucksByCamId && trucksByCamId.length > 0) {
-          assignedTrucks = trucksByCamId;
+        assignedTrucks = (todosCamiones || []).filter((t) => t.camionero_id === foundCamioneroId);
+        if (assignedTrucks.length === 0 && foundCamionero?.nombre) {
+          assignedTrucks = (todosCamiones || []).filter(
+            (t) => t.chofer && t.chofer.trim().toLowerCase() === foundCamionero.nombre.trim().toLowerCase()
+          );
         }
       }
 
       // Si no encontró por camionero_id, buscar por nombre exacto del chofer o perfil_id aislado
       if (assignedTrucks.length === 0 && usr.nombre) {
-        const { data: trucksByNombre } = await supabase
-          .from("camiones")
-          .select("id, placa, capacidad, modelo, chofer, camionero_id")
-          .ilike("chofer", usr.nombre.trim());
-
-        if (trucksByNombre && trucksByNombre.length > 0) {
-          assignedTrucks = trucksByNombre;
-        } else {
-          const { data: trucksByPerfil } = await supabase
-            .from("camiones")
-            .select("id, placa, capacidad, modelo, chofer, camionero_id")
-            .eq("perfil_id", usr.id)
-            .is("camionero_id", null);
-
-          if (trucksByPerfil) assignedTrucks = trucksByPerfil;
+        assignedTrucks = (todosCamiones || []).filter(
+          (t) => t.chofer && t.chofer.trim().toLowerCase() === usr.nombre.trim().toLowerCase()
+        );
+        if (assignedTrucks.length === 0) {
+          assignedTrucks = (todosCamiones || []).filter(
+            (t) => t.perfil_id === usr.id && !t.camionero_id
+          );
         }
       }
 
       setCamionesAsignados(assignedTrucks || []);
 
-      // 3. Cargar camiones disponibles sin chofer para ofrecer vinculación rápida
-      try {
-        const { data: unassignedTrucks } = await supabase
-          .from("camiones")
-          .select("id, placa, capacidad, modelo, chofer")
-          .is("camionero_id", null);
+      // 5. Cargar camiones disponibles sin chofer para ofrecer vinculación rápida individual
+      const assignedIds = new Set((assignedTrucks || []).map((t) => t.id));
+      const disponibles = (todosCamiones || []).filter(
+        (t) => !assignedIds.has(t.id) && !t.camionero_id && (!t.chofer || t.chofer.trim() === "" || t.chofer.toLowerCase().includes("sin"))
+      );
 
-        const assignedIds = new Set((assignedTrucks || []).map((t) => t.id));
-        const disponibles = (unassignedTrucks || []).filter(
-          (t) => !assignedIds.has(t.id) && (!t.chofer || t.chofer.trim() === "" || t.chofer.toLowerCase().includes("sin"))
-        );
-
-        setCamionesDisponibles(disponibles);
-        if (disponibles.length > 0) {
-          setCamionParaVincularId(disponibles[0].id);
-        }
-      } catch (errUnassigned) {
-        console.warn("No se pudo cargar camiones disponibles:", errUnassigned);
+      setCamionesDisponibles(disponibles);
+      if (disponibles.length > 0) {
+        setCamionParaVincularId(disponibles[0].id);
       }
     } catch (err) {
       console.error("Error al cargar datos del chofer:", err);
     } finally {
       setCargandoModalCamionero(false);
     }
+  };
+
+  // 🔗 Asignar un camionero existente con sus camiones
+  const handleAsignarChoferExistente = async () => {
+    if (!choferSeleccionadoParaVincular) return;
+    const ch = choferesDisponibles.find((c) => String(c.id) === String(choferSeleccionadoParaVincular));
+    if (!ch) return;
+
+    setCamioneroId(ch.id);
+    setFichaCamioneroInfo(ch);
+
+    // Autollenar datos personales del chofer seleccionado
+    if (ch.nombre) setModalNombre(ch.nombre);
+    if (ch.cedula) setModalCedula(ch.cedula);
+    if (ch.telefono) setModalTelefono(ch.telefono || "");
+
+    // Cargar todos los camiones vinculados a este chofer
+    try {
+      let { data: trucks } = await supabase
+        .from("camiones")
+        .select("id, placa, capacidad, modelo, chofer, camionero_id, perfil_id")
+        .eq("camionero_id", ch.id);
+
+      if ((!trucks || trucks.length === 0) && ch.nombre) {
+        const { data: trucksNombre } = await supabase
+          .from("camiones")
+          .select("id, placa, capacidad, modelo, chofer, camionero_id, perfil_id")
+          .ilike("chofer", ch.nombre.trim());
+        if (trucksNombre) trucks = trucksNombre;
+      }
+
+      setCamionesAsignados(trucks || []);
+      setCamionesNuevos([]);
+      setCamionesDesvinculados([]);
+      setChoferSeleccionadoParaVincular("");
+      alert(`🎉 Ficha de chofer "${ch.nombre}" seleccionada. Se cargaron ${trucks?.length || 0} camión(es) pertenecientes a este chofer.`);
+    } catch (err) {
+      console.error("Error al cargar camiones del chofer:", err);
+    }
+  };
+
+  // ❌ Desvincular de la ficha de camionero actual
+  const handleDesvincularFichaCamionero = () => {
+    const confirmar = window.confirm(
+      `¿Deseas desvincular este usuario de la ficha de chofer "${fichaCamioneroInfo?.nombre || modalNombre}"?\n\nPodrás seleccionar otro chofer existente con sus camiones o registrar camiones independientes.`
+    );
+    if (!confirmar) return;
+
+    setCamioneroId(null);
+    setFichaCamioneroInfo(null);
+    setCamionesAsignados([]);
   };
 
   // Manejo de camiones asignados existentes
@@ -381,6 +446,14 @@ export function TablaUsuario() {
 
       // 5. Actualizar o crear registro en la tabla camioneros
       let finalCamioneroId = camioneroId;
+
+      // Si cambió de chofer o desvinculó la ficha previa, liberar la anterior
+      if (camioneroOriginalId && camioneroOriginalId !== finalCamioneroId) {
+        await supabase
+          .from("camioneros")
+          .update({ perfil_id: null })
+          .eq("id", camioneroOriginalId);
+      }
 
       if (finalCamioneroId) {
         await supabase
@@ -780,7 +853,87 @@ export function TablaUsuario() {
                       </GridInputs>
                     </SectionBox>
 
-                    {/* 2. UNIDADES CISTERNA ASIGNADAS */}
+                    {/* 2. VINCULAR CON UN CHOFER EXISTENTE REGISTRADO EN EL POZO */}
+                    <SectionBox style={{ border: "1px solid rgba(0, 195, 255, 0.25)", background: "rgba(15, 23, 42, 0.75)" }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px", flexWrap: "wrap", gap: "10px" }}>
+                        <SectionSubtitle style={{ margin: 0, color: "#38bdf8" }}>
+                          <MdAssignmentInd /> Asignar Chofer Existente Registrado en el Pozo
+                        </SectionSubtitle>
+                        {fichaCamioneroInfo && (
+                          <BadgeFichaVinculada>
+                            <MdCheckCircle /> Ficha Vinculada: <strong>{fichaCamioneroInfo.nombre}</strong>
+                          </BadgeFichaVinculada>
+                        )}
+                      </div>
+
+                      <p style={{ color: "#94a3b8", fontSize: "12px", margin: "0 0 12px 0", lineHeight: "1.5" }}>
+                        Si este chofer ya fue creado previamente por el registrador en el pozo, puedes seleccionarlo aquí para autollenar sus datos y cargar automáticamente todos sus camiones asignados.
+                        <br />
+                        <span style={{ color: "#fbbf24", fontWeight: "600" }}>
+                          ⚠️ Solo aparecen en la lista choferes que <strong>aún no tienen un usuario asignado</strong>.
+                        </span>
+                      </p>
+
+                      {fichaCamioneroInfo ? (
+                        <FichaActivaContainer>
+                          <div className="ficha-details">
+                            <div className="avatar-chip">
+                              <MdPerson />
+                            </div>
+                            <div>
+                              <h4>{fichaCamioneroInfo.nombre}</h4>
+                              <p>
+                                Cédula: <strong>{fichaCamioneroInfo.cedula || "No registrada"}</strong> | 
+                                Teléfono: <strong>{fichaCamioneroInfo.telefono || "Sin teléfono"}</strong> | 
+                                Camiones en Sistema: <strong>{camionesAsignados.length} unidad(es)</strong>
+                              </p>
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            className="btn-cambiar-ficha"
+                            onClick={handleDesvincularFichaCamionero}
+                          >
+                            <MdSwapHoriz /> Cambiar / Desvincular Chofer
+                          </button>
+                        </FichaActivaContainer>
+                      ) : (
+                        <VincularChoferSelectorBox>
+                          <div className="selector-row">
+                            <select
+                              value={choferSeleccionadoParaVincular}
+                              onChange={(e) => setChoferSeleccionadoParaVincular(e.target.value)}
+                            >
+                              <option value="">
+                                {choferesDisponibles.length === 0
+                                  ? "-- No hay choferes disponibles sin usuario asignado --"
+                                  : "-- Seleccionar chofer existente con sus camiones --"}
+                              </option>
+                              {choferesDisponibles.map((ch) => (
+                                <option key={ch.id} value={ch.id}>
+                                  {ch.nombre} {ch.cedula ? `(C.I. ${ch.cedula})` : ""} — {ch.camionesCount} camión(es)
+                                </option>
+                              ))}
+                            </select>
+                            <button
+                              type="button"
+                              className="btn-asignar-chofer"
+                              disabled={!choferSeleccionadoParaVincular}
+                              onClick={handleAsignarChoferExistente}
+                            >
+                              <MdLink /> Asignar Chofer y Cargar Camiones
+                            </button>
+                          </div>
+                          {choferesDisponibles.length === 0 && (
+                            <div style={{ marginTop: "8px", fontSize: "11px", color: "#64748b" }}>
+                              ℹ️ Todos los camioneros registrados ya están vinculados a un usuario del sistema o no hay registros aún.
+                            </div>
+                          )}
+                        </VincularChoferSelectorBox>
+                      )}
+                    </SectionBox>
+
+                    {/* 3. UNIDADES CISTERNA ASIGNADAS */}
                     <SectionBox>
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "14px" }}>
                         <SectionSubtitle style={{ margin: 0 }}>
@@ -1821,6 +1974,143 @@ const ModalTrucksFooter = styled.div`
       background: #334155;
       color: #94a3b8;
       cursor: not-allowed;
+    }
+  }
+`;
+
+const BadgeFichaVinculada = styled.div`
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(16, 185, 129, 0.15);
+  border: 1px solid rgba(16, 185, 129, 0.35);
+  color: #34d399;
+  padding: 4px 10px;
+  border-radius: 8px;
+  font-size: 11px;
+  font-weight: 600;
+`;
+
+const FichaActivaContainer = styled.div`
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: rgba(11, 15, 25, 0.7);
+  border: 1px solid rgba(0, 195, 255, 0.3);
+  border-radius: 12px;
+  padding: 14px 18px;
+  flex-wrap: wrap;
+  gap: 12px;
+
+  .ficha-details {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+
+    .avatar-chip {
+      width: 40px;
+      height: 40px;
+      border-radius: 10px;
+      background: rgba(0, 195, 255, 0.15);
+      color: #38bdf8;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 22px;
+    }
+
+    h4 {
+      margin: 0 0 3px 0;
+      color: #ffffff;
+      font-size: 14px;
+      font-weight: 700;
+    }
+
+    p {
+      margin: 0;
+      color: #94a3b8;
+      font-size: 12px;
+
+      strong {
+        color: #38bdf8;
+      }
+    }
+  }
+
+  .btn-cambiar-ficha {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: rgba(245, 158, 11, 0.15);
+    border: 1px solid rgba(245, 158, 11, 0.35);
+    color: #fbbf24;
+    padding: 8px 14px;
+    border-radius: 8px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+
+    &:hover {
+      background: rgba(245, 158, 11, 0.25);
+    }
+  }
+`;
+
+const VincularChoferSelectorBox = styled.div`
+  .selector-row {
+    display: flex;
+    gap: 10px;
+
+    @media (max-width: 650px) {
+      flex-direction: column;
+    }
+
+    select {
+      flex: 1;
+      padding: 10px 14px;
+      background: #0f172a;
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      border-radius: 8px;
+      color: #ffffff;
+      font-size: 13px;
+      outline: none;
+
+      &:focus {
+        border-color: #00c3ff;
+      }
+
+      option {
+        background: #0f172a;
+        color: #ffffff;
+      }
+    }
+
+    .btn-asignar-chofer {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      background: linear-gradient(135deg, #00c3ff 0%, #0072ff 100%);
+      border: none;
+      color: #ffffff;
+      padding: 10px 18px;
+      border-radius: 8px;
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: all 0.2s;
+
+      &:hover:not(:disabled) {
+        transform: translateY(-1px);
+        box-shadow: 0 4px 15px rgba(0, 195, 255, 0.35);
+      }
+
+      &:disabled {
+        background: #334155;
+        color: #94a3b8;
+        cursor: not-allowed;
+      }
     }
   }
 `;

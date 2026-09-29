@@ -85,9 +85,12 @@ export function FormularioUsuario({ onUsuarioRegistrado }) {
         }));
       }
 
-      setListaCamioneros(data || []);
-      if (data && data.length > 0 && !camioneroSeleccionadoId) {
-        setCamioneroSeleccionadoId(data[0].id);
+      // Regla: Si este camionero ya está asignado a un usuario (perfil_id no nulo), no debe aparecer en la lista
+      const camionerosSinUsuario = (data || []).filter((c) => !c.perfil_id);
+
+      setListaCamioneros(camionerosSinUsuario);
+      if (camionerosSinUsuario.length > 0 && (!camioneroSeleccionadoId || !camionerosSinUsuario.some((c) => c.id === camioneroSeleccionadoId))) {
+        setCamioneroSeleccionadoId(camionerosSinUsuario[0].id);
       }
     } catch (err) {
       console.error("Error al cargar camioneros:", err);
