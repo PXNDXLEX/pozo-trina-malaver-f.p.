@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useMemo } from "react";
 import { MenuTemplate } from "../templates/MenuTemplate";
 import { supabase } from "../supabase/supabase.config";
+import { ModalRegistrarRecarga } from "../components/ModalRegistrarRecarga";
 import {
   BarChart,
   Bar,
@@ -14,12 +15,13 @@ import {
   Legend
 } from "recharts";
 import styled from "styled-components";
-import { MdTrendingUp, MdAttachMoney, MdLocalShipping, MdCalendarToday } from "react-icons/md";
+import { MdTrendingUp, MdAttachMoney, MdLocalShipping, MdCalendarToday, MdWaterDrop } from "react-icons/md";
 
 export function Home() {
   const [dataRaw, setDataRaw] = useState([]);
   const [filtroDias, setFiltroDias] = useState(3650); // 3650 = Todo el histórico por defecto
   const [loading, setLoading] = useState(true);
+  const [modalRecargaAbierto, setModalRecargaAbierto] = useState(false);
 
   useEffect(() => {
     fetchVentas();
@@ -139,18 +141,32 @@ export function Home() {
             <p className="subtitle">Monitoreo operativo y financiero en tiempo real</p>
           </div>
 
-          {/* SELECTOR DE RANGO DE TIEMPO SINCRO */}
-          <FilterControl>
-            <MdCalendarToday className="calendar-icon" />
-            <select value={filtroDias} onChange={(e) => setFiltroDias(Number(e.target.value))}>
-              <option value={3650}>Todo el Histórico</option>
-              <option value={30}>Últimos 30 días</option>
-              <option value={15}>Últimas 2 semanas</option>
-              <option value={7}>Últimos 7 días</option>
-              <option value={1}>Hoy</option>
-            </select>
-          </FilterControl>
+          <HeaderControls>
+            {/* BOTÓN REGISTRAR RECARGA */}
+            <BotonRecarga type="button" onClick={() => setModalRecargaAbierto(true)}>
+              <MdWaterDrop className="btn-icon" /> Registrar Recarga de Agua
+            </BotonRecarga>
+
+            {/* SELECTOR DE RANGO DE TIEMPO SINCRO */}
+            <FilterControl>
+              <MdCalendarToday className="calendar-icon" />
+              <select value={filtroDias} onChange={(e) => setFiltroDias(Number(e.target.value))}>
+                <option value={3650}>Todo el Histórico</option>
+                <option value={30}>Últimos 30 días</option>
+                <option value={15}>Últimas 2 semanas</option>
+                <option value={7}>Últimos 7 días</option>
+                <option value={1}>Hoy</option>
+              </select>
+            </FilterControl>
+          </HeaderControls>
         </HeaderSection>
+
+        {/* MODAL PARA REGISTRAR RECARGA */}
+        <ModalRegistrarRecarga
+          isOpen={modalRecargaAbierto}
+          onClose={() => setModalRecargaAbierto(false)}
+          onRecargaExitosa={fetchVentas}
+        />
 
         {loading ? (
           <LoadingBox>Cargando analíticas del sistema...</LoadingBox>
@@ -282,6 +298,38 @@ const HeaderSection = styled.div`
   .subtitle {
     color: #94a3b8;
     font-size: 14px;
+  }
+`;
+
+const HeaderControls = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+`;
+
+const BotonRecarga = styled.button`
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 18px;
+  background: linear-gradient(135deg, #00c3ff 0%, #0072ff 100%);
+  color: #ffffff;
+  border: none;
+  border-radius: 12px;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 4px 15px rgba(0, 195, 255, 0.35);
+  transition: all 0.2s ease;
+
+  .btn-icon {
+    font-size: 18px;
+  }
+
+  &:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 22px rgba(0, 195, 255, 0.55);
   }
 `;
 

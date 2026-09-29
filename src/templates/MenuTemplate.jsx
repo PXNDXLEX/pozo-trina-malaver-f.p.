@@ -18,7 +18,8 @@ import {
   MdManageAccounts,
   MdClose,
   MdVpnKey,
-  MdLock
+  MdLock,
+  MdPayments
 } from "react-icons/md";
 
 export function MenuTemplate({ children }) {
@@ -188,18 +189,30 @@ export function MenuTemplate({ children }) {
                   <MdAddCircleOutline /> Registro de Recargas
                 </DropdownItem>
                 {user?.role === "administrador" && (
-                  <DropdownItem to="/detalle-recarga" className={location.pathname === "/detalle-recarga" ? "active" : ""}>
-                    <MdFormatListBulleted /> Recargas del Día
-                  </DropdownItem>
+                  <>
+                    <DropdownItem to="/detalle-recarga" className={location.pathname === "/detalle-recarga" ? "active" : ""}>
+                      <MdFormatListBulleted /> Recargas del Día
+                    </DropdownItem>
+                    <DropdownItem to="/pagos" className={location.pathname === "/pagos" ? "active" : ""}>
+                      <MdPayments /> Pagos Registrados
+                    </DropdownItem>
+                  </>
                 )}
               </DropdownMenu>
             )}
           </DropdownContainer>
-           {user?.role !== "registrador" && (
-          <NavLink to="/cuentas-por-cobrar"  className={location.pathname === "/cuentas-por-cobrar" ? "active" : ""}>
-           <MdReceipt className="icon" /> Cuentas por Cobrar
-        </NavLink>
-           )}
+
+          {user?.role === "administrador" && (
+            <NavLink to="/pagos" className={location.pathname === "/pagos" ? "active" : ""}>
+              <MdPayments className="nav-icon" /> Pagos
+            </NavLink>
+          )}
+
+          {user?.role !== "registrador" && (
+            <NavLink to="/cuentas-por-cobrar" className={location.pathname === "/cuentas-por-cobrar" ? "active" : ""}>
+              <MdReceipt className="icon" /> Cuentas por Cobrar
+            </NavLink>
+          )}
           {user?.role === "administrador" && (
             <NavLink to="/contabilidad" className={location.pathname === "/contabilidad" ? "active" : ""}>
               <MdAssessment className="nav-icon" /> Contabilidad
@@ -298,6 +311,13 @@ export function MenuTemplate({ children }) {
         </NavItemMobile>
            )}
         {user?.role === "administrador" && (
+          <NavItemMobile to="/pagos" className={location.pathname === "/pagos" ? "active" : ""}>
+            <MdPayments />
+            <span>Pagos</span>
+          </NavItemMobile>
+        )}
+
+        {user?.role === "administrador" && (
           <NavItemMobile to="/contabilidad" className={location.pathname === "/contabilidad" ? "active" : ""}>
             <MdAssessment />
             <span>Balances</span>
@@ -355,9 +375,14 @@ export function MenuTemplate({ children }) {
                     <MdAddCircleOutline /> Nueva Recarga / Venta
                   </Link>
                   {user?.role === "administrador" && (
-                    <Link to="/detalle-recarga">
-                      <MdFormatListBulleted /> Lista de Recargas del Día
-                    </Link>
+                    <>
+                      <Link to="/detalle-recarga">
+                        <MdFormatListBulleted /> Lista de Recargas del Día
+                      </Link>
+                      <Link to="/pagos">
+                        <MdPayments /> Control de Pagos Registrados
+                      </Link>
+                    </>
                   )}
                 </>
               )}

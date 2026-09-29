@@ -12,6 +12,8 @@ export * from './pages/ListVentas';
 export * from './pages/Contabilidad';
 export * from './pages/Gestusuarios';
 export * from './pages/RegUsuario';
+export * from './pages/PagosRegistrados';
+export * from './components/ModalRegistrarRecarga';
 export * from './routers/routes';
 export * from './store/ThemeStore';
 export * from './styles/GlobalStyles';

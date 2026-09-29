@@ -1,5 +1,5 @@
 import{Routes, Route, Navigate } from "react-router-dom";
-import { Login, Regcamion, ListaCamion, Contabilidad, ListVentas, RegVentas, Gestusuarios, RegUsuario, CuentasPorCobrar, Home} from "../index";
+import { Login, Regcamion, ListaCamion, Contabilidad, ListVentas, RegVentas, Gestusuarios, RegUsuario, CuentasPorCobrar, Home, PagosRegistrados } from "../index";
 import {ProtectedRoute} from "../components/ProtectedRoute";
 export function MyRoutes(){
     return(
@@ -30,6 +30,7 @@ export function MyRoutes(){
         <Route path="/listcamion" element={<ListaCamion />} />
         <Route path="/contabilidad" element={<Contabilidad />} />
         <Route path="/detalle-recarga" element={<ListVentas />} />
+        <Route path="/pagos" element={<PagosRegistrados />} />
         <Route path="/gestusuarios" element={<Gestusuarios />} />
           <Route path="/usuario" element={<RegUsuario />} />
           <Route path="/cuentas-por-cobrar" element={<CuentasPorCobrar />} />
