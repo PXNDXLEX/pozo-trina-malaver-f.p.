@@ -62,36 +62,51 @@ export function CuentasPorCobrar() {
         .order("fecha_carga", { ascending: false });
 
       if (user?.role === "camionero" && user?.id) {
-        // Obtener todos los camiones asignados a este perfil (directo o por tabla camioneros)
+        // Obtener todos los camiones asignados a este chofer (priorizando tabla camioneros)
         let idsAsignados = [];
-        const { data: misCamiones } = await supabase
-          .from("camiones")
-          .select("id")
-          .eq("perfil_id", user.id);
-
-        if (misCamiones) {
-          idsAsignados.push(...misCamiones.map((c) => c.id));
-        }
+        let camioneroEncontrado = false;
 
         try {
           const { data: cRow } = await supabase
             .from("camioneros")
-            .select("id")
+            .select("id, nombre")
             .eq("perfil_id", user.id)
             .maybeSingle();
 
           if (cRow?.id) {
+            camioneroEncontrado = true;
             const { data: camionesDeCamionero } = await supabase
               .from("camiones")
               .select("id")
               .eq("camionero_id", cRow.id);
 
-            if (camionesDeCamionero) {
+            if (camionesDeCamionero && camionesDeCamionero.length > 0) {
               idsAsignados.push(...camionesDeCamionero.map((c) => c.id));
+            } else if (cRow.nombre) {
+              const { data: byNombre } = await supabase
+                .from("camiones")
+                .select("id")
+                .ilike("chofer", cRow.nombre.trim());
+              if (byNombre) {
+                idsAsignados.push(...byNombre.map((c) => c.id));
+              }
             }
           }
         } catch (e) {
           // fallback si la tabla camioneros no existe aún
+        }
+
+        // Solo si no se encontró registro en camioneros, fallback por perfil_id directo
+        if (!camioneroEncontrado) {
+          const { data: misCamiones } = await supabase
+            .from("camiones")
+            .select("id")
+            .eq("perfil_id", user.id)
+            .is("camionero_id", null);
+
+          if (misCamiones) {
+            idsAsignados.push(...misCamiones.map((c) => c.id));
+          }
         }
 
         idsAsignados = [...new Set(idsAsignados)];

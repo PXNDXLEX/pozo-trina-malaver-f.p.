@@ -66,31 +66,45 @@ export function ModalRegistrarRecarga({ isOpen, onClose, onRecargaExitosa }) {
       // Si el usuario es camionero, filtrar estrictamente sus camiones asignados (1 o varios)
       if (user?.role === "camionero" && user?.id) {
         let trucks = [];
-
-        const { data: misCamiones } = await supabase
-          .from("camiones")
-          .select("id, placa, chofer, capacidad, modelo, perfil_id")
-          .eq("perfil_id", user.id);
-
-        if (misCamiones) trucks.push(...misCamiones);
+        let camioneroEncontrado = null;
 
         try {
           const { data: cRow } = await supabase
             .from("camioneros")
-            .select("id")
+            .select("id, nombre")
             .eq("perfil_id", user.id)
             .maybeSingle();
 
           if (cRow?.id) {
+            camioneroEncontrado = cRow;
             const { data: trucksCam } = await supabase
               .from("camiones")
-              .select("id, placa, chofer, capacidad, modelo, perfil_id")
+              .select("id, placa, chofer, capacidad, modelo, perfil_id, camionero_id")
               .eq("camionero_id", cRow.id);
 
-            if (trucksCam) trucks.push(...trucksCam);
+            if (trucksCam && trucksCam.length > 0) {
+              trucks = trucksCam;
+            } else if (cRow.nombre) {
+              const { data: byNombre } = await supabase
+                .from("camiones")
+                .select("id, placa, chofer, capacidad, modelo, perfil_id, camionero_id")
+                .ilike("chofer", cRow.nombre.trim());
+              if (byNombre) trucks = byNombre;
+            }
           }
         } catch (errCam) {
           // ignore if table doesn't exist
+        }
+
+        // Fallback solo si no se encontró en camioneros
+        if (!camioneroEncontrado && trucks.length === 0) {
+          const { data: misCamiones } = await supabase
+            .from("camiones")
+            .select("id, placa, chofer, capacidad, modelo, perfil_id, camionero_id")
+            .eq("perfil_id", user.id)
+            .is("camionero_id", null);
+
+          if (misCamiones) trucks = misCamiones;
         }
 
         // Deduplicar unidades por id
@@ -209,6 +223,19 @@ export function ModalRegistrarRecarga({ isOpen, onClose, onRecargaExitosa }) {
         alert("La referencia bancaria es obligatoria para registrar el pago.");
         return;
       }
+    }
+
+    const esRegistrador = user?.role === "registrador";
+
+    // 📸 Validación obligatoria de fotos para el Registrador
+    if (esRegistrador && !fotoCamion) {
+      alert("⚠️ La foto de la cisterna en el pozo es obligatoria para el registrador.");
+      return;
+    }
+
+    if (esRegistrador && tipoRegistro === "pagado" && !fotoComprobante) {
+      alert("⚠️ La foto del comprobante de pago es obligatoria para el registrador cuando se marca como pagado.");
+      return;
     }
 
     setLoading(true);
@@ -450,7 +477,12 @@ export function ModalRegistrarRecarga({ isOpen, onClose, onRecargaExitosa }) {
             {/* 3. FOTO DEL CAMIÓN */}
             <FormGroup>
               <Label>
-                <MdPhotoCamera className="icon" /> Foto de Evidencia del Camión:
+                <MdPhotoCamera className="icon" /> Foto de Evidencia de la Cisterna en el Pozo:{" "}
+                {user?.role === "registrador" ? (
+                  <span className="req">* (Obligatoria)</span>
+                ) : (
+                  <span className="optional">(Opcional)</span>
+                )}
               </Label>
               <FileInputBox>
                 <input
@@ -548,7 +580,12 @@ export function ModalRegistrarRecarga({ isOpen, onClose, onRecargaExitosa }) {
 
                 <FormGroup>
                   <Label>
-                    <MdReceipt className="icon" /> Foto de la Factura / Comprobante de Pago: <span className="optional">(Opcional)</span>
+                    <MdReceipt className="icon" /> Foto de la Factura / Comprobante de Pago:{" "}
+                    {user?.role === "registrador" ? (
+                      <span className="req">* (Obligatoria)</span>
+                    ) : (
+                      <span className="optional">(Opcional)</span>
+                    )}
                   </Label>
                   <FileInputBox>
                     <input

@@ -73,12 +73,16 @@ export function FormularioCamiones({ onCamionAgregado }) {
 
         if (todosCamiones) {
           listaCamioneros = listaCamioneros.map((c) => {
-            const count = todosCamiones.filter(
-              (t) =>
-                (t.camionero_id && t.camionero_id === c.id) ||
-                (t.perfil_id && t.perfil_id === c.perfil_id) ||
-                (t.chofer && t.chofer.toLowerCase().trim() === c.nombre.toLowerCase().trim())
-            ).length;
+            const count = todosCamiones.filter((t) => {
+              if (t.camionero_id) {
+                return String(t.camionero_id) === String(c.id);
+              }
+              // Enlazar únicamente por nombre de chofer si camionero_id es null (nunca por perfil_id compartido)
+              return (
+                t.chofer &&
+                t.chofer.toLowerCase().trim() === c.nombre.toLowerCase().trim()
+              );
+            }).length;
             return { ...c, totalCamiones: count };
           });
         }
@@ -114,6 +118,23 @@ export function FormularioCamiones({ onCamionAgregado }) {
       alert("Por favor ingresa una capacidad en litros válida (mayor a 0).");
       setCargando(false);
       return;
+    }
+
+    // 🔒 Validación estricta de Placa Única
+    try {
+      const { data: placaExistente } = await supabase
+        .from("camiones")
+        .select("id, placa, chofer")
+        .eq("placa", placaLimpia)
+        .maybeSingle();
+
+      if (placaExistente) {
+        alert(`⚠️ ¡Error! La placa ${placaLimpia} ya se encuentra registrada en el sistema (asignada a: ${placaExistente.chofer || "otro chofer"}). Las placas deben ser únicas.`);
+        setCargando(false);
+        return;
+      }
+    } catch (errCheckPlaca) {
+      console.warn("No se pudo verificar la placa única previamente:", errCheckPlaca);
     }
 
     try {

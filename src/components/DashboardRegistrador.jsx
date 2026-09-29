@@ -180,6 +180,18 @@ export function DashboardRegistrador() {
       return;
     }
 
+    // 📸 Foto de la cisterna en el pozo: OBLIGATORIA para el registrador
+    if (!fotoCamion) {
+      alert("⚠️ La foto de la cisterna cargando en el pozo es obligatoria para el registrador.");
+      return;
+    }
+
+    // 📸 Foto del comprobante de pago: OBLIGATORIA para recargas pagadas al momento
+    if (tipoRegistro === "pagado" && !fotoComprobante) {
+      alert("⚠️ La foto del comprobante de pago es obligatoria para el registrador cuando se marca como pagado.");
+      return;
+    }
+
     setGuardando(true);
     setMensajeExito("");
 
@@ -474,7 +486,7 @@ export function DashboardRegistrador() {
               {/* FOTO COMPROBANTE DE PAGO */}
               <FormGroup>
                 <Label>
-                  <MdPhotoCamera className="icon" /> Foto del Comprobante de Pago (Opcional):
+                  <MdPhotoCamera className="icon" /> Foto del Comprobante de Pago: <span className="req">* Obligatoria</span>
                 </Label>
                 <PhotoUploadContainer>
                   {previewComprobante ? (
@@ -500,7 +512,7 @@ export function DashboardRegistrador() {
                       />
                       <label htmlFor="foto-comprobante-input">
                         <MdPhotoCamera className="upload-icon" />
-                        <span>Subir captura de comprobante</span>
+                        <span>Subir captura del comprobante bancario (Requerido)</span>
                       </label>
                     </UploadDropzone>
                   )}
@@ -509,10 +521,10 @@ export function DashboardRegistrador() {
             </PaymentFieldsBox>
           )}
 
-          {/* 5. FOTO DEL CAMIÓN (OPCIONAL) */}
+          {/* 5. FOTO DEL CAMIÓN EN EL POZO */}
           <FormGroup>
             <Label>
-              <MdPhotoCamera className="icon" /> Foto de la Cisterna en el Pozo (Opcional):
+              <MdPhotoCamera className="icon" /> Foto de la Cisterna en el Pozo: <span className="req">* Obligatoria</span>
             </Label>
             <PhotoUploadContainer>
               {previewCamion ? (

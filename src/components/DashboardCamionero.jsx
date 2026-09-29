@@ -38,16 +38,9 @@ export function DashboardCamionero() {
     try {
       let trucks = [];
 
-      // 1. Buscar camiones asignados por perfil_id directo
       if (user?.id) {
-        const { data: byPerfil } = await supabase
-          .from("camiones")
-          .select("id, placa, chofer, capacidad, modelo, perfil_id, camionero_id")
-          .eq("perfil_id", user.id);
-
-        if (byPerfil) trucks.push(...byPerfil);
-
-        // 2. Buscar si está vinculado a través de la tabla camioneros
+        // 1. Prioridad: Buscar la ficha del chofer en la tabla camioneros
+        let camioneroEncontrado = null;
         try {
           const { data: camioneroRow } = await supabase
             .from("camioneros")
@@ -56,15 +49,39 @@ export function DashboardCamionero() {
             .maybeSingle();
 
           if (camioneroRow?.id) {
+            camioneroEncontrado = camioneroRow;
+
+            // Obtener camiones asignados específicamente a este camionero_id
             const { data: byCamioneroId } = await supabase
               .from("camiones")
               .select("id, placa, chofer, capacidad, modelo, perfil_id, camionero_id")
               .eq("camionero_id", camioneroRow.id);
 
-            if (byCamioneroId) trucks.push(...byCamioneroId);
+            if (byCamioneroId && byCamioneroId.length > 0) {
+              trucks = byCamioneroId;
+            } else if (camioneroRow.nombre) {
+              // Si aún no tienen camionero_id en camiones, enlazar por nombre exacto del chofer
+              const { data: byNombre } = await supabase
+                .from("camiones")
+                .select("id, placa, chofer, capacidad, modelo, perfil_id, camionero_id")
+                .ilike("chofer", camioneroRow.nombre.trim());
+
+              if (byNombre) trucks = byNombre;
+            }
           }
         } catch (errCamioneros) {
           // ignore si la tabla no existe
+        }
+
+        // 2. Si no se encontró en camioneros, fallback a camiones por perfil_id pero SOLO si camionero_id es null
+        if (!camioneroEncontrado && trucks.length === 0) {
+          const { data: byPerfil } = await supabase
+            .from("camiones")
+            .select("id, placa, chofer, capacidad, modelo, perfil_id, camionero_id")
+            .eq("perfil_id", user.id)
+            .is("camionero_id", null);
+
+          if (byPerfil) trucks = byPerfil;
         }
       }
 

@@ -97,20 +97,24 @@ export function FormularioUsuario({ onUsuarioRegistrado }) {
   const cargarCamionesDeChofer = async (choferId) => {
     try {
       const choferObj = listaCamioneros.find((c) => String(c.id) === String(choferId));
-      let query = supabase.from("camiones").select("id, placa, capacidad, modelo");
+      if (!choferObj) return;
 
-      if (choferObj?.perfil_id) {
-        query = query.or(`camionero_id.eq.${choferId},perfil_id.eq.${choferObj.perfil_id}`);
-      } else {
-        query = query.eq("camionero_id", choferId);
+      // Buscar camiones vinculados estrictamente a este chofer (por camionero_id o por nombre de chofer)
+      let { data } = await supabase
+        .from("camiones")
+        .select("id, placa, capacidad, modelo")
+        .eq("camionero_id", choferId);
+
+      // Si los camiones no tienen camionero_id asignado aún en la BD, buscar por nombre del chofer
+      if ((!data || data.length === 0) && choferObj.nombre) {
+        const { data: dataPorNombre } = await supabase
+          .from("camiones")
+          .select("id, placa, capacidad, modelo")
+          .ilike("chofer", choferObj.nombre.trim());
+        data = dataPorNombre;
       }
 
-      const { data, error } = await query;
-      if (!error && data) {
-        setCamionesDelChofer(data);
-      } else {
-        setCamionesDelChofer([]);
-      }
+      setCamionesDelChofer(data || []);
     } catch (err) {
       setCamionesDelChofer([]);
     }
@@ -144,6 +148,9 @@ export function FormularioUsuario({ onUsuarioRegistrado }) {
     // Validaciones si el rol es Camionero
     if (rol === "camionero") {
       if (modoCamionero === "nuevo") {
+        const placasSet = new Set();
+        const placasArray = [];
+
         for (let i = 0; i < camionesNuevos.length; i++) {
           const t = camionesNuevos[i];
           const placaLimpia = t.placa.trim().toUpperCase();
@@ -152,6 +159,14 @@ export function FormularioUsuario({ onUsuarioRegistrado }) {
             setLoading(false);
             return;
           }
+          if (placasSet.has(placaLimpia)) {
+            alert(`⚠️ La placa "${placaLimpia}" está duplicada en el formulario. Cada camión debe tener una placa única.`);
+            setLoading(false);
+            return;
+          }
+          placasSet.add(placaLimpia);
+          placasArray.push(placaLimpia);
+
           if (!t.capacidad || parseInt(t.capacidad, 10) <= 0) {
             alert(`Indica una capacidad en litros válida para el Camión #${i + 1}.`);
             setLoading(false);
@@ -162,6 +177,22 @@ export function FormularioUsuario({ onUsuarioRegistrado }) {
             setLoading(false);
             return;
           }
+        }
+
+        // 🔒 Verificar en BD que ninguna placa esté ya registrada
+        try {
+          const { data: placasEnUso } = await supabase
+            .from("camiones")
+            .select("placa, chofer")
+            .in("placa", placasArray);
+
+          if (placasEnUso && placasEnUso.length > 0) {
+            alert(`⚠️ La placa "${placasEnUso[0].placa}" ya se encuentra registrada en el sistema (asignada a: ${placasEnUso[0].chofer || "otro chofer"}). Las placas deben ser únicas.`);
+            setLoading(false);
+            return;
+          }
+        } catch (errCheckPlacas) {
+          console.warn("Error al verificar placas existentes:", errCheckPlacas);
         }
       } else if (modoCamionero === "existente" && deseaAgregarCamionExtra) {
         const extraPlacaLimpia = extraPlaca.trim().toUpperCase();
@@ -174,6 +205,23 @@ export function FormularioUsuario({ onUsuarioRegistrado }) {
           alert("Indica una capacidad en litros válida para el camión adicional.");
           setLoading(false);
           return;
+        }
+
+        // 🔒 Verificar en BD que la placa adicional no esté en uso
+        try {
+          const { data: placaExtraExistente } = await supabase
+            .from("camiones")
+            .select("placa, chofer")
+            .eq("placa", extraPlacaLimpia)
+            .maybeSingle();
+
+          if (placaExtraExistente) {
+            alert(`⚠️ La placa adicional "${extraPlacaLimpia}" ya está registrada en el sistema (asignada a: ${placaExtraExistente.chofer || "otro chofer"}).`);
+            setLoading(false);
+            return;
+          }
+        } catch (errCheckExtra) {
+          console.warn("Error al verificar placa adicional:", errCheckExtra);
         }
       }
     }

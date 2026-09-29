@@ -60,17 +60,40 @@ export function TablaCamiones() {
   };
 
   const handleGuardarEdicion = async (id) => {
+    const placaLimpia = placaEdit.trim().toUpperCase();
+
+    // 🔒 Verificar que la placa no esté en uso por otro camión
+    try {
+      const { data: placaExistente } = await supabase
+        .from("camiones")
+        .select("id, placa, chofer")
+        .eq("placa", placaLimpia)
+        .neq("id", id)
+        .maybeSingle();
+
+      if (placaExistente) {
+        alert(`⚠️ ¡Error! La placa "${placaLimpia}" ya pertenece a otro camión (${placaExistente.chofer || "otro chofer"}). Las placas deben ser únicas.`);
+        return;
+      }
+    } catch (errCheck) {
+      console.warn("Error al verificar placa única:", errCheck);
+    }
+
     const { error } = await supabase
       .from("camiones")
       .update({
-        placa: placaEdit.trim().toUpperCase(),
+        placa: placaLimpia,
         chofer: choferEdit.trim(),
         capacidad: parseFloat(capacidadEdit) || 0,
       })
       .eq("id", id);
 
     if (error) {
-      alert(`Error al actualizar camión: ${error.message}`);
+      if (error.code === "23505" || error.message.includes("unique")) {
+        alert(`⚠️ ¡Error! La placa "${placaLimpia}" ya se encuentra registrada en el sistema.`);
+      } else {
+        alert(`Error al actualizar camión: ${error.message}`);
+      }
     } else {
       alert("🎉 ¡Camión actualizado con éxito!");
       setEditandoCamion(null);
