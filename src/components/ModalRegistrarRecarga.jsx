@@ -47,6 +47,20 @@ export function ModalRegistrarRecarga({ isOpen, onClose, onRecargaExitosa }) {
   const cargarCamiones = async () => {
     setCargandoCamiones(true);
     try {
+      // Si el usuario es camionero, filtrar prioritariamente su camión asignado
+      if (user?.role === "camionero" && user?.id) {
+        const { data: misCamiones } = await supabase
+          .from("camiones")
+          .select("id, placa, chofer, capacidad, modelo, perfil_id")
+          .eq("perfil_id", user.id);
+
+        if (misCamiones && misCamiones.length > 0) {
+          setCamiones(misCamiones);
+          setCamionSeleccionadoId(misCamiones[0].id);
+          return;
+        }
+      }
+
       const { data, error } = await supabase
         .from("camiones")
         .select("id, placa, chofer, capacidad, modelo")
@@ -54,6 +68,9 @@ export function ModalRegistrarRecarga({ isOpen, onClose, onRecargaExitosa }) {
 
       if (error) throw error;
       setCamiones(data || []);
+      if (user?.role === "camionero" && data && data.length === 1) {
+        setCamionSeleccionadoId(data[0].id);
+      }
     } catch (err) {
       console.error("Error al cargar camiones:", err.message);
     } finally {
@@ -62,7 +79,9 @@ export function ModalRegistrarRecarga({ isOpen, onClose, onRecargaExitosa }) {
   };
 
   const limpiarCampos = () => {
-    setCamionSeleccionadoId("");
+    if (user?.role !== "camionero") {
+      setCamionSeleccionadoId("");
+    }
     setMonto("");
     setNota("");
     setFotoCamion(null);

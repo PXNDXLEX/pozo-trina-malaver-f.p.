@@ -4,6 +4,7 @@ import { supabase } from "../supabase/supabase.config";
 import { useAuthStore } from "../store/AuthStore";
 import { ModalRegistrarRecarga } from "../components/ModalRegistrarRecarga";
 import { DashboardRegistrador } from "../components/DashboardRegistrador";
+import { DashboardCamionero } from "../components/DashboardCamionero";
 import {
   BarChart,
   Bar,
@@ -27,6 +28,15 @@ export function Home() {
     return (
       <MenuTemplate>
         <DashboardRegistrador />
+      </MenuTemplate>
+    );
+  }
+
+  // 🚚 Si el usuario es Camionero, renderizar su panel con el modal de nueva recarga
+  if (user?.role === "camionero") {
+    return (
+      <MenuTemplate>
+        <DashboardCamionero />
       </MenuTemplate>
     );
   }

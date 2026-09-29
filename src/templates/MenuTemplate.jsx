@@ -175,11 +175,11 @@ export function MenuTemplate({ children }) {
                 </DropdownMenu>
               )}
             </DropdownContainer>
-          ) : (
+          ) : user?.role === "registrador" ? (
             <NavLink to="/camion" className={location.pathname === "/camion" ? "active" : ""}>
               <MdLocalShipping className="nav-icon" /> Camiones
             </NavLink>
-          )}
+          ) : null}
 
           {user?.role === "administrador" && (
             <NavLink
@@ -196,9 +196,9 @@ export function MenuTemplate({ children }) {
             </NavLink>
           )}
 
-          {user?.role === "administrador" && (
+          {(user?.role === "administrador" || user?.role === "camionero") && (
             <NavLink to="/cuentas-por-cobrar" className={location.pathname === "/cuentas-por-cobrar" ? "active" : ""}>
-              <MdReceipt className="icon" /> Cuentas por Cobrar
+              <MdReceipt className="icon" /> {user?.role === "camionero" ? "Mis Cuentas por Pagar" : "Cuentas por Cobrar"}
             </NavLink>
           )}
 
@@ -292,12 +292,12 @@ export function MenuTemplate({ children }) {
             <MdLocalShipping />
             <span>Camiones</span>
           </NavButtonMobile>
-        ) : (
+        ) : user?.role === "registrador" ? (
           <NavItemMobile to="/camion" className={location.pathname === "/camion" ? "active" : ""}>
             <MdLocalShipping />
             <span>Camiones</span>
           </NavItemMobile>
-        )}
+        ) : null}
 
         {user?.role === "administrador" && (
           <NavItemMobile to="/detalle-recarga" className={location.pathname === "/detalle-recarga" ? "active" : ""}>
@@ -313,10 +313,10 @@ export function MenuTemplate({ children }) {
           </NavItemMobile>
         )}
 
-        {user?.role === "administrador" && (
+        {(user?.role === "administrador" || user?.role === "camionero") && (
           <NavItemMobile to="/cuentas-por-cobrar" className={location.pathname === "/cuentas-por-cobrar" ? "active" : ""}>
             <MdReceipt />
-            <span>Deudas</span>
+            <span>{user?.role === "camionero" ? "Mis Deudas" : "Deudas"}</span>
           </NavItemMobile>
         )}
 

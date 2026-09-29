@@ -9,19 +9,20 @@ export function MyRoutes(){
       
 
       <Route path="/recarga" element={<Navigate to="/home" replace />} />
+
+      {/* 🔐 PANTALLAS DE DASHBOARD: Administrador, Registrador y Camionero */}
       <Route element={<ProtectedRoute rolesPermitidos={["administrador", "registrador", "camionero"]} />}>
-        <Route path="/cuentas-por-cobrar" element={<CuentasPorCobrar />} />
+        <Route path="/home" element={<Home />} />
       </Route>
 
-      {/* 🔐 PANTALLAS COMPARTIDAS: Administrador y Registrador */}
+      {/* 🔐 REGISTRO DE CAMIONES: Administrador y Registrador */}
       <Route element={<ProtectedRoute rolesPermitidos={["administrador", "registrador"]} />}>
-        <Route path="/home" element={<Home />} />
         <Route path="/camion" element={<Regcamion />} />
       </Route>
 
-       <Route element={<ProtectedRoute rolesPermitidos={["administrador","camionero"]} />}>
-            <Route path="/cuentas-por-cobrar" element={<CuentasPorCobrar />} />
-
+      {/* 🔐 CUENTAS POR COBRAR / PAGAR: Administrador y Camionero */}
+      <Route element={<ProtectedRoute rolesPermitidos={["administrador", "camionero"]} />}>
+        <Route path="/cuentas-por-cobrar" element={<CuentasPorCobrar />} />
       </Route>
       {/* 👑 PANTALLAS EXCLUSIVAS: Solo el Administrador puede ingresar */}
       <Route element={<ProtectedRoute rolesPermitidos={["administrador"]} />}>
