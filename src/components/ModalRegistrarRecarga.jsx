@@ -82,7 +82,12 @@ export function ModalRegistrarRecarga({ isOpen, onClose, onRecargaExitosa }) {
               .select("id, placa, chofer, capacidad, modelo, perfil_id, camionero_id")
               .eq("camionero_id", cRow.id);
 
-            (trucksCam || []).forEach((t) => trucksMap.set(t.id, t));
+            (trucksCam || []).forEach((t) => {
+              const choferStr = (t.chofer || "").trim().toLowerCase();
+              if (!choferStr.includes("sin")) {
+                trucksMap.set(t.id, t);
+              }
+            });
           }
 
           // 3. Camiones por perfil_id directo
@@ -91,17 +96,28 @@ export function ModalRegistrarRecarga({ isOpen, onClose, onRecargaExitosa }) {
             .select("id, placa, chofer, capacidad, modelo, perfil_id, camionero_id")
             .eq("perfil_id", user.id);
 
-          (misCamiones || []).forEach((t) => trucksMap.set(t.id, t));
+          (misCamiones || []).forEach((t) => {
+            const choferStr = (t.chofer || "").trim().toLowerCase();
+            const esMismoCam = !t.camionero_id || (cRow?.id && String(t.camionero_id) === String(cRow.id));
+            if (!choferStr.includes("sin") && esMismoCam) {
+              trucksMap.set(t.id, t);
+            }
+          });
 
           // 4. Camiones por coincidencia de nombre de chofer o usuario
           const nombreChofer = cRow?.nombre || user?.nombre;
-          if (nombreChofer) {
+          if (nombreChofer && !nombreChofer.toLowerCase().includes("sin")) {
             const { data: byNombre } = await supabase
               .from("camiones")
               .select("id, placa, chofer, capacidad, modelo, perfil_id, camionero_id")
               .ilike("chofer", nombreChofer.trim());
 
-            (byNombre || []).forEach((t) => trucksMap.set(t.id, t));
+            (byNombre || []).forEach((t) => {
+              const choferStr = (t.chofer || "").trim().toLowerCase();
+              if (!choferStr.includes("sin")) {
+                trucksMap.set(t.id, t);
+              }
+            });
           }
         } catch (errCam) {
           console.error("Error al cargar camiones en modal de recarga:", errCam);

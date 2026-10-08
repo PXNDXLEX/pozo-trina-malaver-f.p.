@@ -54,7 +54,12 @@ export function DashboardCamionero() {
               .select("id, placa, chofer, capacidad, modelo, perfil_id, camionero_id")
               .eq("camionero_id", camioneroRow.id);
 
-            (byCamioneroId || []).forEach((t) => trucksMap.set(t.id, t));
+            (byCamioneroId || []).forEach((t) => {
+              const choferStr = (t.chofer || "").trim().toLowerCase();
+              if (!choferStr.includes("sin")) {
+                trucksMap.set(t.id, t);
+              }
+            });
           }
 
           // 3. Camiones por perfil_id directo
@@ -63,17 +68,28 @@ export function DashboardCamionero() {
             .select("id, placa, chofer, capacidad, modelo, perfil_id, camionero_id")
             .eq("perfil_id", user.id);
 
-          (byPerfil || []).forEach((t) => trucksMap.set(t.id, t));
+          (byPerfil || []).forEach((t) => {
+            const choferStr = (t.chofer || "").trim().toLowerCase();
+            const esMismoCam = !t.camionero_id || (camioneroRow?.id && String(t.camionero_id) === String(camioneroRow.id));
+            if (!choferStr.includes("sin") && esMismoCam) {
+              trucksMap.set(t.id, t);
+            }
+          });
 
           // 4. Camiones por coincidencia de nombre de chofer o usuario
           const nombreChofer = camioneroRow?.nombre || user?.nombre;
-          if (nombreChofer) {
+          if (nombreChofer && !nombreChofer.toLowerCase().includes("sin")) {
             const { data: byNombre } = await supabase
               .from("camiones")
               .select("id, placa, chofer, capacidad, modelo, perfil_id, camionero_id")
               .ilike("chofer", nombreChofer.trim());
 
-            (byNombre || []).forEach((t) => trucksMap.set(t.id, t));
+            (byNombre || []).forEach((t) => {
+              const choferStr = (t.chofer || "").trim().toLowerCase();
+              if (!choferStr.includes("sin")) {
+                trucksMap.set(t.id, t);
+              }
+            });
           }
         } catch (errCamioneros) {
           console.error("Error al cargar camiones en dashboard:", errCamioneros);

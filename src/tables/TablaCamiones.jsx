@@ -53,6 +53,17 @@ export function TablaCamiones() {
   const consultar = async () => {
     setLoading(true);
     try {
+      // Auto-limpieza de seguridad: si un camión está marcado "Sin Asignar", limpiar camionero_id y perfil_id residuales
+      try {
+        await supabase
+          .from("camiones")
+          .update({ camionero_id: null, perfil_id: null, chofer: "Sin Asignar" })
+          .ilike("chofer", "%sin%")
+          .not("camionero_id", "is", null);
+      } catch (eClean) {
+        console.warn("Auto-clean en camiones:", eClean);
+      }
+
       const [resCamiones, resCamioneros] = await Promise.all([
         supabase.from("camiones").select("*").order("id", { ascending: false }),
         supabase.from("camioneros").select("id, nombre, cedula, telefono, perfil_id").order("nombre", { ascending: true }),
@@ -266,34 +277,44 @@ export function TablaCamiones() {
 
   // Helper para obtener datos completos del chofer
   const getChoferInfo = (camion) => {
-    if (camion.camionero_id) {
-      const match = listaCamioneros.find((c) => c.id === camion.camionero_id);
+    const choferStr = (camion.chofer || "").trim().toLowerCase();
+    const esTextoSin = !choferStr || choferStr.includes("sin");
+
+    if (camion.camionero_id && !esTextoSin) {
+      const match = listaCamioneros.find((c) => String(c.id) === String(camion.camionero_id));
       if (match) return match;
     }
-    if (camion.perfil_id) {
+    if (camion.perfil_id && !esTextoSin) {
       const match = listaCamioneros.find((c) => c.perfil_id === camion.perfil_id);
       if (match) return match;
     }
-    if (camion.chofer) {
+    if (!esTextoSin) {
       const match = listaCamioneros.find(
-        (c) => c.nombre?.trim().toLowerCase() === camion.chofer?.trim().toLowerCase()
+        (c) => c.nombre?.trim().toLowerCase() === choferStr
       );
       if (match) return match;
     }
     return null;
   };
 
+  // Helper para saber si un camión tiene chofer legítimo asignado
+  const tieneChoferAsignado = (camion) => {
+    const info = getChoferInfo(camion);
+    const choferStr = (camion.chofer || "").trim().toLowerCase();
+    const esTextoSin = !choferStr || choferStr.includes("sin");
+    return Boolean(info || !esTextoSin);
+  };
+
   // Cálculo de Métricas KPI
   const totalCamiones = datos.length;
   const capacidadTotalFlota = datos.reduce((acc, c) => acc + (parseFloat(c.capacidad) || 0), 0);
-  const conChoferCount = datos.filter(
-    (c) => c.camionero_id || (c.chofer && c.chofer.trim() !== "" && !c.chofer.toLowerCase().includes("sin"))
-  ).length;
+  const conChoferCount = datos.filter((c) => tieneChoferAsignado(c)).length;
   const sinChoferCount = totalCamiones - conChoferCount;
 
   // Filtrado de datos
   const datosFiltrados = datos.filter((c) => {
-    const tieneChofer = c.camionero_id || (c.chofer && c.chofer.trim() !== "" && !c.chofer.toLowerCase().includes("sin"));
+    const choferInfo = getChoferInfo(c);
+    const tieneChofer = tieneChoferAsignado(c);
 
     if (filtroEstado === "con_chofer" && !tieneChofer) return false;
     if (filtroEstado === "sin_chofer" && tieneChofer) return false;
@@ -303,7 +324,18 @@ export function TablaCamiones() {
       const placa = (c.placa || "").toLowerCase();
       const chofer = (c.chofer || "").toLowerCase();
       const modelo = (c.modelo || "").toLowerCase();
-      return placa.includes(q) || chofer.includes(q) || modelo.includes(q);
+      const choferNombre = (choferInfo?.nombre || "").toLowerCase();
+      const choferCedula = (choferInfo?.cedula || "").toLowerCase();
+      const choferTelefono = (choferInfo?.telefono || "").toLowerCase();
+
+      return (
+        placa.includes(q) ||
+        chofer.includes(q) ||
+        modelo.includes(q) ||
+        choferNombre.includes(q) ||
+        choferCedula.includes(q) ||
+        choferTelefono.includes(q)
+      );
     }
 
     return true;
@@ -682,9 +714,11 @@ export function TablaCamiones() {
                           <option value="">-- ⚠️ Sin Chofer Asignado (Unidad Libre) --</option>
                           {listaCamioneros.map((ch) => {
                             const cantCamiones = datos.filter((t) => {
-                              const matchCamId = t.camionero_id === ch.id;
+                              const choferStr = (t.chofer || "").trim().toLowerCase();
+                              if (choferStr.includes("sin")) return false;
+                              const matchCamId = t.camionero_id && String(t.camionero_id) === String(ch.id);
                               const matchPerfil = ch.perfil_id && t.perfil_id === ch.perfil_id;
-                              const matchNombre = ch.nombre && t.chofer && t.chofer.trim().toLowerCase() === ch.nombre.trim().toLowerCase();
+                              const matchNombre = ch.nombre && choferStr === ch.nombre.trim().toLowerCase();
                               return matchCamId || matchPerfil || matchNombre;
                             }).length;
 

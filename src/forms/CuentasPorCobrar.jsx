@@ -76,29 +76,45 @@ export function CuentasPorCobrar() {
           if (cRow?.id) {
             const { data: camionesDeCamionero } = await supabase
               .from("camiones")
-              .select("id")
+              .select("id, chofer")
               .eq("camionero_id", cRow.id);
 
-            (camionesDeCamionero || []).forEach((c) => idsSet.add(c.id));
+            (camionesDeCamionero || []).forEach((c) => {
+              const choferStr = (c.chofer || "").trim().toLowerCase();
+              if (!choferStr.includes("sin")) {
+                idsSet.add(c.id);
+              }
+            });
           }
 
           // 2. Por perfil_id directo
           const { data: misCamiones } = await supabase
             .from("camiones")
-            .select("id")
+            .select("id, chofer, camionero_id")
             .eq("perfil_id", user.id);
 
-          (misCamiones || []).forEach((c) => idsSet.add(c.id));
+          (misCamiones || []).forEach((c) => {
+            const choferStr = (c.chofer || "").trim().toLowerCase();
+            const esMismoCam = !c.camionero_id || (cRow?.id && String(c.camionero_id) === String(cRow.id));
+            if (!choferStr.includes("sin") && esMismoCam) {
+              idsSet.add(c.id);
+            }
+          });
 
           // 3. Por nombre de chofer o usuario
           const nombreChofer = cRow?.nombre || user?.nombre;
-          if (nombreChofer) {
+          if (nombreChofer && !nombreChofer.toLowerCase().includes("sin")) {
             const { data: byNombre } = await supabase
               .from("camiones")
-              .select("id")
+              .select("id, chofer")
               .ilike("chofer", nombreChofer.trim());
 
-            (byNombre || []).forEach((c) => idsSet.add(c.id));
+            (byNombre || []).forEach((c) => {
+              const choferStr = (c.chofer || "").trim().toLowerCase();
+              if (!choferStr.includes("sin")) {
+                idsSet.add(c.id);
+              }
+            });
           }
         } catch (e) {
           console.error("Error al obtener camiones de cobranza:", e);
