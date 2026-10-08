@@ -269,6 +269,12 @@ export function CuentasPorCobrar() {
       return;
     }
 
+    // 📸 Validación obligatoria de comprobante para choferes camioneros
+    if (user?.role === "camionero" && !fotoComprobante) {
+      alert("⚠️ La foto o captura del comprobante/referencia de pago es obligatoria para registrar el pago.");
+      return;
+    }
+
     setProcesandoPago(true);
 
     try {
@@ -706,7 +712,14 @@ export function CuentasPorCobrar() {
                   {/* FOTO COMPROBANTE DE PAGO */}
                   <FormField>
                     <label>
-                      <MdPhotoCamera /> Foto del Comprobante / Recibo: <span className="opt">(Opcional)</span>
+                      <MdPhotoCamera /> Foto del Comprobante / Recibo:{" "}
+                      {user?.role === "camionero" ? (
+                        <span className="req" style={{ color: "#ef4444", fontWeight: 700 }}>
+                          * (Obligatoria)
+                        </span>
+                      ) : (
+                        <span className="opt">(Opcional)</span>
+                      )}
                     </label>
                     <FileInputWrap>
                       <input

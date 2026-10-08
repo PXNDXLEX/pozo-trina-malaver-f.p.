@@ -239,15 +239,17 @@ export function ModalRegistrarRecarga({ isOpen, onClose, onRecargaExitosa }) {
     }
 
     const esRegistrador = user?.role === "registrador";
+    const esCamionero = user?.role === "camionero";
+    const exigeFotos = esRegistrador || esCamionero;
 
-    // 📸 Validación obligatoria de fotos para el Registrador
-    if (esRegistrador && !fotoCamion) {
-      alert("⚠️ La foto de la cisterna en el pozo es obligatoria para el registrador.");
+    // 📸 Validación obligatoria de fotos para Registrador y Camionero
+    if (exigeFotos && !fotoCamion) {
+      alert("⚠️ La foto de evidencia de la cisterna en el pozo es obligatoria.");
       return;
     }
 
-    if (esRegistrador && tipoRegistro === "pagado" && !fotoComprobante) {
-      alert("⚠️ La foto del comprobante de pago es obligatoria para el registrador cuando se marca como pagado.");
+    if (exigeFotos && tipoRegistro === "pagado" && !fotoComprobante) {
+      alert("⚠️ La foto o captura del comprobante/referencia de pago es obligatoria cuando se registra como pagado.");
       return;
     }
 
@@ -491,7 +493,7 @@ export function ModalRegistrarRecarga({ isOpen, onClose, onRecargaExitosa }) {
             <FormGroup>
               <Label>
                 <MdPhotoCamera className="icon" /> Foto de Evidencia de la Cisterna en el Pozo:{" "}
-                {user?.role === "registrador" ? (
+                {user?.role === "registrador" || user?.role === "camionero" ? (
                   <span className="req">* (Obligatoria)</span>
                 ) : (
                   <span className="optional">(Opcional)</span>
@@ -594,7 +596,7 @@ export function ModalRegistrarRecarga({ isOpen, onClose, onRecargaExitosa }) {
                 <FormGroup>
                   <Label>
                     <MdReceipt className="icon" /> Foto de la Factura / Comprobante de Pago:{" "}
-                    {user?.role === "registrador" ? (
+                    {user?.role === "registrador" || user?.role === "camionero" ? (
                       <span className="req">* (Obligatoria)</span>
                     ) : (
                       <span className="optional">(Opcional)</span>
