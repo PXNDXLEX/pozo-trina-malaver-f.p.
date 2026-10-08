@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useMemo, useRef } from "react";
-import styled from "styled-components";
+import React, { useState, useEffect, useMemo } from "react";
+import styled, { keyframes } from "styled-components";
 import { supabase } from "../supabase/supabase.config";
 import { useAuthStore } from "../store/AuthStore";
 import {
@@ -14,68 +14,96 @@ import {
   MdDeleteOutline,
   MdEditNote,
   MdSearch,
+  MdPerson,
+  MdArrowBack,
+  MdAddCircleOutline,
+  MdSwapHoriz,
+  MdWaterDrop,
+  MdConfirmationNumber,
+  MdDirectionsCar,
+  MdWarning,
 } from "react-icons/md";
 
 export function ModalRegistrarRecarga({ isOpen, onClose, onRecargaExitosa }) {
   const user = useAuthStore((state) => state.user);
-  const [camiones, setCamiones] = useState([]);
-  const [camionSeleccionadoId, setCamionSeleccionadoId] = useState("");
-  const [busquedaCamion, setBusquedaCamion] = useState("");
-  const [mostrarMenuCamiones, setMostrarMenuCamiones] = useState(false);
-  const comboboxRef = useRef(null);
 
+  // Estados de navegación interna del modal:
+  // "cuadricula_camionero" | "cuadricula_admin_chofer" | "cuadricula_admin_camion" | "formulario"
+  const [pasoModal, setPasoModal] = useState("formulario");
+
+  // Listas de datos
+  const [camiones, setCamiones] = useState([]);
+  const [choferes, setChoferes] = useState([]);
+  const [cargandoDatos, setCargandoDatos] = useState(false);
+
+  // Selecciones activas
+  const [choferSeleccionado, setChoferSeleccionado] = useState(null);
+  const [camionSeleccionadoId, setCamionSeleccionadoId] = useState("");
+
+  // Búsquedas en las cuadrículas
+  const [busquedaChofer, setBusquedaChofer] = useState("");
+  const [busquedaCamionGrid, setBusquedaCamionGrid] = useState("");
+
+  // Formularios rápidos inline (para Admin y Registrador)
+  const [mostrarFormNuevoChofer, setMostrarFormNuevoChofer] = useState(false);
+  const [nuevoChoferNombre, setNuevoChoferNombre] = useState("");
+  const [nuevoChoferCedula, setNuevoChoferCedula] = useState("");
+  const [nuevoChoferTelefono, setNuevoChoferTelefono] = useState("");
+
+  const [mostrarFormNuevoCamion, setMostrarFormNuevoCamion] = useState(false);
+  const [nuevoCamionPlaca, setNuevoCamionPlaca] = useState("");
+  const [nuevoCamionCapacidad, setNuevoCamionCapacidad] = useState(10000);
+  const [nuevoCamionModelo, setNuevoCamionModelo] = useState("");
+  const [guardandoInline, setGuardandoInline] = useState(false);
+
+  // Formulario de Recarga
   const [monto, setMonto] = useState("");
   const [nota, setNota] = useState("");
-  
-  // Fotos
   const [fotoCamion, setFotoCamion] = useState(null);
   const [previewCamion, setPreviewCamion] = useState(null);
   const [fotoComprobante, setFotoComprobante] = useState(null);
   const [previewComprobante, setPreviewComprobante] = useState(null);
-
-  // Modo de pago: "pagado" vs "deuda"
   const [tipoRegistro, setTipoRegistro] = useState("pagado"); // "pagado" | "deuda"
   const [metodoPago, setMetodoPago] = useState("Transferencia");
   const [referencia, setReferencia] = useState("");
-
   const [loading, setLoading] = useState(false);
-  const [cargandoCamiones, setCargandoCamiones] = useState(false);
+
+  const PRESETS_CAPACIDAD = [5000, 10000, 12000, 15000, 20000, 30000];
 
   useEffect(() => {
     if (isOpen) {
-      cargarCamiones();
+      iniciarFlujoModal();
     } else {
-      limpiarCampos();
+      limpiarTodo();
     }
   }, [isOpen]);
 
-  // Cierre de menú al hacer clic afuera
-  useEffect(() => {
-    function handleClickOutside(e) {
-      if (comboboxRef.current && !comboboxRef.current.contains(e.target)) {
-        setMostrarMenuCamiones(false);
-      }
-    }
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
+  // Carga inicial y decisión del paso inicial
+  const iniciarFlujoModal = async () => {
+    setCargandoDatos(true);
+    setMostrarFormNuevoChofer(false);
+    setMostrarFormNuevoCamion(false);
+    setBusquedaChofer("");
+    setBusquedaCamionGrid("");
 
-  const cargarCamiones = async () => {
-    setCargandoCamiones(true);
     try {
-      // Si el usuario es camionero, filtrar estrictamente sus camiones asignados (1 o varios)
       if (user?.role === "camionero" && user?.id) {
+        // --- 1. FLUJO CAMIONERO ---
         const trucksMap = new Map();
 
         try {
-          // 1. Buscar la ficha en camioneros enlazada a este usuario
+          // Buscar ficha del chofer
           const { data: cRow } = await supabase
             .from("camioneros")
-            .select("id, nombre")
+            .select("id, nombre, cedula, telefono, perfil_id")
             .eq("perfil_id", user.id)
             .maybeSingle();
 
-          // 2. Camiones por camionero_id
+          if (cRow) {
+            setChoferSeleccionado(cRow);
+          }
+
+          // Camiones por camionero_id
           if (cRow?.id) {
             const { data: trucksCam } = await supabase
               .from("camiones")
@@ -90,7 +118,7 @@ export function ModalRegistrarRecarga({ isOpen, onClose, onRecargaExitosa }) {
             });
           }
 
-          // 3. Camiones por perfil_id directo
+          // Camiones por perfil_id directo
           const { data: misCamiones } = await supabase
             .from("camiones")
             .select("id, placa, chofer, capacidad, modelo, perfil_id, camionero_id")
@@ -104,7 +132,7 @@ export function ModalRegistrarRecarga({ isOpen, onClose, onRecargaExitosa }) {
             }
           });
 
-          // 4. Camiones por coincidencia de nombre de chofer o usuario
+          // Camiones por coincidencia de nombre
           const nombreChofer = cRow?.nombre || user?.nombre;
           if (nombreChofer && !nombreChofer.toLowerCase().includes("sin")) {
             const { data: byNombre } = await supabase
@@ -120,48 +148,59 @@ export function ModalRegistrarRecarga({ isOpen, onClose, onRecargaExitosa }) {
             });
           }
         } catch (errCam) {
-          console.error("Error al cargar camiones en modal de recarga:", errCam);
+          console.error("Error al cargar camiones de chofer:", errCam);
         }
 
-        const finalTrucks = Array.from(trucksMap.values());
+        const misUnidades = Array.from(trucksMap.values());
+        setCamiones(misUnidades);
 
-        if (finalTrucks && finalTrucks.length > 0) {
-          setCamiones(finalTrucks);
-          if (!camionSeleccionadoId || !finalTrucks.some((t) => t.id === camionSeleccionadoId)) {
-            setCamionSeleccionadoId(finalTrucks[0].id);
-            setBusquedaCamion(`${finalTrucks[0].placa} — ${finalTrucks[0].chofer}`);
-          }
-          return;
+        // REGLA: Si tiene solo 1 camión, seleccionar automáticamente y abrir formulario
+        // Si tiene más de 1 camión, mostrar cuadrícula para elegir la unidad
+        if (misUnidades.length === 1) {
+          setCamionSeleccionadoId(misUnidades[0].id);
+          setPasoModal("formulario");
         } else {
-          // Si el camionero NO tiene camión asignado, no mostrar camiones ajenos
-          setCamiones([]);
           setCamionSeleccionadoId("");
-          setBusquedaCamion("");
-          return;
+          setPasoModal("cuadricula_camionero");
         }
+      } else {
+        // --- 2. FLUJO ADMINISTRADOR Y REGISTRADOR ---
+        const [resChoferes, resCamiones] = await Promise.all([
+          supabase
+            .from("camioneros")
+            .select("id, nombre, cedula, telefono, perfil_id")
+            .order("nombre", { ascending: true }),
+          supabase
+            .from("camiones")
+            .select("id, placa, chofer, capacidad, modelo, camionero_id, perfil_id")
+            .order("id", { ascending: false }),
+        ]);
+
+        const choferesData = resChoferes.data || [];
+        const camionesData = resCamiones.data || [];
+
+        setChoferes(choferesData);
+        setCamiones(camionesData);
+        setChoferSeleccionado(null);
+        setCamionSeleccionadoId("");
+
+        // Abre solicitando primero el chofer del camión
+        setPasoModal("cuadricula_admin_chofer");
       }
-
-      // Para Administrador y Registrador, cargar lista completa
-      const { data, error } = await supabase
-        .from("camiones")
-        .select("id, placa, chofer, capacidad, modelo")
-        .order("chofer", { ascending: true });
-
-      if (error) throw error;
-      setCamiones(data || []);
     } catch (err) {
-      console.error("Error al cargar camiones:", err.message);
+      console.error("Error al inicializar modal de recarga:", err);
     } finally {
-      setCargandoCamiones(false);
+      setCargandoDatos(false);
     }
   };
 
-  const limpiarCampos = () => {
-    if (user?.role !== "camionero") {
-      setCamionSeleccionadoId("");
-      setBusquedaCamion("");
-    }
-    setMostrarMenuCamiones(false);
+  const limpiarTodo = () => {
+    setChoferSeleccionado(null);
+    setCamionSeleccionadoId("");
+    setBusquedaChofer("");
+    setBusquedaCamionGrid("");
+    setMostrarFormNuevoChofer(false);
+    setMostrarFormNuevoCamion(false);
     setMonto("");
     setNota("");
     setFotoCamion(null);
@@ -171,8 +210,58 @@ export function ModalRegistrarRecarga({ isOpen, onClose, onRecargaExitosa }) {
     setTipoRegistro("pagado");
     setMetodoPago("Transferencia");
     setReferencia("");
+    setLoading(false);
   };
 
+  // Camiones asignados al chofer seleccionado en el flujo de Admin/Registrador
+  const camionesDelChoferSeleccionado = useMemo(() => {
+    if (!choferSeleccionado) return [];
+    const ch = choferSeleccionado;
+    const mapa = new Map();
+
+    camiones.forEach((t) => {
+      const choferStr = (t.chofer || "").trim().toLowerCase();
+      if (choferStr.includes("sin")) return;
+
+      const matchId = t.camionero_id && String(t.camionero_id) === String(ch.id);
+      const matchPerfil = ch.perfil_id && t.perfil_id === ch.perfil_id;
+      const matchNombre = ch.nombre && choferStr === ch.nombre.trim().toLowerCase();
+
+      if (matchId || matchPerfil || matchNombre) {
+        mapa.set(t.id, t);
+      }
+    });
+
+    return Array.from(mapa.values());
+  }, [choferSeleccionado, camiones]);
+
+  // Choferes filtrados para la cuadrícula
+  const choferesFiltrados = useMemo(() => {
+    if (!busquedaChofer.trim()) return choferes;
+    const q = busquedaChofer.toLowerCase().trim();
+    return choferes.filter(
+      (c) =>
+        c.nombre?.toLowerCase().includes(q) ||
+        c.cedula?.toLowerCase().includes(q) ||
+        c.telefono?.toLowerCase().includes(q)
+    );
+  }, [choferes, busquedaChofer]);
+
+  // Camiones filtrados para la cuadrícula del chofer
+  const camionesFiltradosGrid = useMemo(() => {
+    const origen =
+      user?.role === "camionero" ? camiones : camionesDelChoferSeleccionado;
+    if (!busquedaCamionGrid.trim()) return origen;
+    const q = busquedaCamionGrid.toLowerCase().trim();
+    return origen.filter(
+      (c) =>
+        c.placa?.toLowerCase().includes(q) ||
+        c.modelo?.toLowerCase().includes(q) ||
+        String(c.capacidad).includes(q)
+    );
+  }, [user?.role, camiones, camionesDelChoferSeleccionado, busquedaCamionGrid]);
+
+  // Manejo de Fotos
   const handleFotoCamionChange = (e) => {
     const file = e.target.files[0];
     if (file) {
@@ -217,6 +306,119 @@ export function ModalRegistrarRecarga({ isOpen, onClose, onRecargaExitosa }) {
     }
   };
 
+  // Crear nuevo chofer inline (Admin / Registrador)
+  const handleGuardarNuevoChofer = async (e) => {
+    e.preventDefault();
+    if (!nuevoChoferNombre.trim()) {
+      alert("Por favor ingresa el nombre del nuevo chofer.");
+      return;
+    }
+
+    setGuardandoInline(true);
+    try {
+      const { data, error } = await supabase
+        .from("camioneros")
+        .insert([
+          {
+            nombre: nuevoChoferNombre.trim(),
+            cedula: nuevoChoferCedula.trim() || null,
+            telefono: nuevoChoferTelefono.trim() || null,
+          },
+        ])
+        .select("id, nombre, cedula, telefono, perfil_id")
+        .single();
+
+      if (error) throw error;
+
+      setChoferes((prev) => [...prev, data]);
+      setChoferSeleccionado(data);
+      setMostrarFormNuevoChofer(false);
+      setNuevoChoferNombre("");
+      setNuevoChoferCedula("");
+      setNuevoChoferTelefono("");
+      setPasoModal("cuadricula_admin_camion");
+    } catch (err) {
+      console.error("Error al registrar chofer:", err);
+      alert(`Error al registrar chofer: ${err.message || "Error desconocido"}`);
+    } finally {
+      setGuardandoInline(false);
+    }
+  };
+
+  // Crear nuevo camión inline para el chofer seleccionado (Admin / Registrador)
+  const handleGuardarNuevoCamion = async (e) => {
+    e.preventDefault();
+    const placaLimpia = (nuevoCamionPlaca || "").trim().toUpperCase();
+    if (!placaLimpia) {
+      alert("Por favor ingresa la placa de la cisterna.");
+      return;
+    }
+
+    const regexPlaca = /^[A-Z0-9]{5,8}$/;
+    if (!regexPlaca.test(placaLimpia)) {
+      alert("La placa debe tener entre 5 y 8 caracteres alfanuméricos sin espacios ni guiones.");
+      return;
+    }
+
+    const capNum = parseInt(nuevoCamionCapacidad, 10);
+    if (!capNum || capNum <= 0) {
+      alert("Por favor indica una capacidad en litros válida mayor a 0.");
+      return;
+    }
+
+    if (!nuevoCamionModelo.trim()) {
+      alert("Por favor indica el modelo o marca del camión.");
+      return;
+    }
+
+    setGuardandoInline(true);
+    try {
+      // Validar placa única
+      const { data: placaExistente } = await supabase
+        .from("camiones")
+        .select("id, chofer")
+        .eq("placa", placaLimpia)
+        .maybeSingle();
+
+      if (placaExistente) {
+        alert(`⚠️ La placa "${placaLimpia}" ya está registrada en el pozo.`);
+        setGuardandoInline(false);
+        return;
+      }
+
+      const payload = {
+        placa: placaLimpia,
+        capacidad: capNum,
+        modelo: nuevoCamionModelo.trim(),
+        chofer: choferSeleccionado.nombre,
+        camionero_id: choferSeleccionado.id,
+        perfil_id: choferSeleccionado.perfil_id || null,
+      };
+
+      const { data, error } = await supabase
+        .from("camiones")
+        .insert([payload])
+        .select("id, placa, chofer, capacidad, modelo, camionero_id, perfil_id")
+        .single();
+
+      if (error) throw error;
+
+      setCamiones((prev) => [data, ...prev]);
+      setCamionSeleccionadoId(data.id);
+      setMostrarFormNuevoCamion(false);
+      setNuevoCamionPlaca("");
+      setNuevoCamionCapacidad(10000);
+      setNuevoCamionModelo("");
+      setPasoModal("formulario");
+    } catch (err) {
+      console.error("Error al registrar camión:", err);
+      alert(`Error al registrar camión: ${err.message || "Error desconocido"}`);
+    } finally {
+      setGuardandoInline(false);
+    }
+  };
+
+  // Enviar Formulario de Recarga
   const handleSubmit = async (e) => {
     e.preventDefault();
 
@@ -256,16 +458,14 @@ export function ModalRegistrarRecarga({ isOpen, onClose, onRecargaExitosa }) {
     setLoading(true);
 
     try {
-      // 1. Subir foto del camión si existe
       let urlFotoCamion = null;
       if (fotoCamion) {
         urlFotoCamion = await subirArchivoStorage("fotos-camiones", fotoCamion, "camion");
       }
 
-      // 2. Subir foto de la factura/comprobante si existe
       let urlComprobante = null;
       if (tipoRegistro === "pagado" && fotoComprobante) {
-        urlComprobante = await subirArchivoStorage("comprobantes", fotoComprobante, "factura");
+        urlComprobante = await subirArchivoStorage("comprobantes", fotoComprobante, "recibo");
       }
 
       const fechaActual = new Date().toISOString();
@@ -274,7 +474,6 @@ export function ModalRegistrarRecarga({ isOpen, onClose, onRecargaExitosa }) {
       const metodoFinal = esPagado ? metodoPago : "Deuda";
       const referenciaFinal = esPagado && metodoPago !== "Efectivo" ? referencia.trim() : null;
 
-      // Objeto de inserción base
       const registroPayload = {
         camion_id: camionSeleccionadoId,
         monto: montoNum,
@@ -285,21 +484,17 @@ export function ModalRegistrarRecarga({ isOpen, onClose, onRecargaExitosa }) {
         estatus: estatusFinal,
       };
 
-      // Payload extendido con nota, usuario_id y url_comprobante
       const payloadExtendido = { ...registroPayload };
       if (urlComprobante) payloadExtendido.url_comprobante = urlComprobante;
       if (user?.id) payloadExtendido.usuario_id = user.id;
       if (nota.trim()) payloadExtendido.nota = nota.trim();
 
-      // Intento 1: Guardar con todos los campos extendidos
       let { error: insertError } = await supabase
         .from("registros_carga")
         .insert([payloadExtendido]);
 
       if (insertError) {
         console.warn("Fallo inserción con columnas extendidas, reintentando con payload base:", insertError.message);
-        // Si las columnas nuevas (usuario_id, nota, url_comprobante) no existen en la base de datos de Supabase todavía,
-        // realizamos fallback seguro con los campos base para que el registro nunca falle.
         const { error: errFallback } = await supabase
           .from("registros_carga")
           .insert([registroPayload]);
@@ -314,7 +509,7 @@ export function ModalRegistrarRecarga({ isOpen, onClose, onRecargaExitosa }) {
           : "⏳ ¡Recarga registrada exitosamente como Deuda en Cuentas por Cobrar!"
       );
 
-      limpiarCampos();
+      limpiarTodo();
       onClose();
 
       if (typeof onRecargaExitosa === "function") {
@@ -328,18 +523,6 @@ export function ModalRegistrarRecarga({ isOpen, onClose, onRecargaExitosa }) {
     }
   };
 
-  const camionesFiltrados = useMemo(() => {
-    if (!busquedaCamion.trim()) return camiones;
-    const q = busquedaCamion.toLowerCase().trim();
-    return camiones.filter(
-      (c) =>
-        c.placa?.toLowerCase().includes(q) ||
-        c.chofer?.toLowerCase().includes(q) ||
-        c.modelo?.toLowerCase().includes(q) ||
-        String(c.capacidad).includes(q)
-    );
-  }, [camiones, busquedaCamion]);
-
   if (!isOpen) return null;
 
   const camionActual = camiones.find((c) => String(c.id) === String(camionSeleccionadoId));
@@ -347,255 +530,504 @@ export function ModalRegistrarRecarga({ isOpen, onClose, onRecargaExitosa }) {
   return (
     <Overlay onClick={onClose}>
       <ModalContainer onClick={(e) => e.stopPropagation()}>
-        <ModalHeader>
-          <HeaderInfo>
-            <HeaderBadge>💧</HeaderBadge>
-            <div>
-              <h3>Registrar Recarga de Agua</h3>
-              <p>Ingresa los detalles del viaje cisterna y gestiona el cobro</p>
-            </div>
-          </HeaderInfo>
-          <CloseBtn onClick={onClose} title="Cerrar modal">
-            <MdClose />
-          </CloseBtn>
-        </ModalHeader>
+        {/* ========================================================= */}
+        {/* VISTA 1: CUADRÍCULA DE CAMIONES DEL CAMIONERO (>1 CAMIÓN) */}
+        {/* ========================================================= */}
+        {pasoModal === "cuadricula_camionero" && (
+          <StepSection>
+            <ModalHeader>
+              <HeaderInfo>
+                <HeaderBadge>🚚</HeaderBadge>
+                <div>
+                  <h3>Selecciona tu Camión Cisterna</h3>
+                  <p>Elige cuál de tus unidades va a cargar agua en el pozo</p>
+                </div>
+              </HeaderInfo>
+              <CloseBtn onClick={onClose} title="Cerrar modal">
+                <MdClose />
+              </CloseBtn>
+            </ModalHeader>
 
-        <Form onSubmit={handleSubmit}>
-          <ModalBody>
-            {/* 1. SELECCIONAR CAMIÓN CON CUADRO DE BÚSQUEDA DINÁMICA */}
-            <FormGroup ref={comboboxRef} style={{ position: "relative" }}>
-              <Label>
-                <MdLocalShipping className="icon" /> Buscar y Seleccionar Camión Cisterna: <span className="req">*</span>
-              </Label>
-
-              {user?.role === "camionero" && camiones.length === 0 && !cargandoCamiones ? (
-                <AlertaSinCamionModal>
-                  ⚠️ Tu cuenta de chofer no tiene ningún camión cisterna vinculado. Contacta al administrador para asignar tu unidad.
-                </AlertaSinCamionModal>
+            <ModalBody>
+              {camiones.length === 0 ? (
+                <EmptyGridNotice>
+                  <MdWarning className="warn-ico" />
+                  <h4>No tienes unidades asignadas</h4>
+                  <p>Tu cuenta de chofer aún no tiene camiones vinculados. Consulta al administrador.</p>
+                </EmptyGridNotice>
               ) : (
                 <>
-                  <SearchBoxWrapper>
-                    <MdSearch className="search-ico" />
-                    <SearchInput
-                      type="text"
-                      placeholder="Escribe para buscar por placa o chofer (ej: A23, Carlos)..."
-                      value={busquedaCamion}
-                      onChange={(e) => {
-                        setBusquedaCamion(e.target.value);
-                        setMostrarMenuCamiones(true);
-                        if (camionSeleccionadoId) {
-                          setCamionSeleccionadoId("");
-                        }
-                      }}
-                      onFocus={() => {
-                        if (user?.role !== "camionero" || camiones.length > 1) {
-                          setMostrarMenuCamiones(true);
-                        }
-                      }}
-                      disabled={user?.role === "camionero" && camiones.length === 1}
-                      required={!camionSeleccionadoId}
-                    />
-                    {busquedaCamion && (user?.role !== "camionero" || camiones.length > 1) && (
-                      <ClearBtn
+                  {camiones.length > 4 && (
+                    <SearchGridInputBox>
+                      <MdSearch className="search-ico" />
+                      <input
+                        type="text"
+                        placeholder="Buscar por placa o modelo..."
+                        value={busquedaCamionGrid}
+                        onChange={(e) => setBusquedaCamionGrid(e.target.value)}
+                      />
+                    </SearchGridInputBox>
+                  )}
+
+                  <GridSelectionContainer>
+                    {camionesFiltradosGrid.map((c) => (
+                      <CardSelectionItem
+                        key={c.id}
                         type="button"
                         onClick={() => {
-                          setBusquedaCamion("");
-                          setCamionSeleccionadoId("");
-                          setMostrarMenuCamiones(true);
+                          setCamionSeleccionadoId(c.id);
+                          setPasoModal("formulario");
                         }}
-                        title="Borrar texto de búsqueda"
                       >
-                        <MdClose />
-                      </ClearBtn>
-                    )}
-                  </SearchBoxWrapper>
-
-                  {/* LISTA DINÁMICA FLOTANTE DE RESULTADOS */}
-                  {mostrarMenuCamiones && (user?.role !== "camionero" || camiones.length > 1) && (
-                    <DynamicTruckDropdown>
-                      {cargandoCamiones ? (
-                        <DropdownItemNotice>Cargando lista de camiones...</DropdownItemNotice>
-                      ) : camionesFiltrados.length === 0 ? (
-                        <DropdownItemNotice>
-                          No se encontraron camiones que coincidan con "{busquedaCamion}"
-                        </DropdownItemNotice>
-                      ) : (
-                        camionesFiltrados.map((c) => {
-                          const isSelected = String(c.id) === String(camionSeleccionadoId);
-                          return (
-                            <TruckOptionItem
-                              key={c.id}
-                              type="button"
-                              $active={isSelected}
-                              onClick={() => {
-                                setCamionSeleccionadoId(c.id);
-                                setBusquedaCamion(`${c.placa} — Chofer: ${c.chofer}`);
-                                setMostrarMenuCamiones(false);
-                              }}
-                            >
-                              <div className="truck-row-main">
-                                <span className="placa-badge">{c.placa}</span>
-                                <span className="chofer-label">{c.chofer}</span>
-                              </div>
-                              <div className="truck-row-meta">
-                                <span className="cap-badge">💧 {Number(c.capacidad).toLocaleString()} Lts</span>
-                                {c.modelo && <span className="modelo-badge">{c.modelo}</span>}
-                              </div>
-                            </TruckOptionItem>
-                          );
-                        })
-                      )}
-                    </DynamicTruckDropdown>
-                  )}
-
-                  {/* FICHA CONFIRMATORIA DEL CAMIÓN SELECCIONADO */}
-                  {camionActual && (
-                    <CamionInfoPill>
-                      <span><strong>Placa:</strong> {camionActual.placa}</span>
-                      <span><strong>Chofer:</strong> {camionActual.chofer}</span>
-                      <span><strong>Capacidad:</strong> {camionActual.capacidad?.toLocaleString()} Lts</span>
-                      {camionActual.modelo && <span><strong>Modelo:</strong> {camionActual.modelo}</span>}
-                      {(user?.role !== "camionero" || camiones.length > 1) && (
-                        <ChangeTruckBtn
-                          type="button"
-                          onClick={() => {
-                            setBusquedaCamion("");
-                            setCamionSeleccionadoId("");
-                            setMostrarMenuCamiones(true);
-                          }}
-                        >
-                          Cambiar Unidad
-                        </ChangeTruckBtn>
-                      )}
-                    </CamionInfoPill>
-                  )}
+                        <div className="card-top">
+                          <span className="plate-badge">{c.placa}</span>
+                          <span className="truck-icon">🚚</span>
+                        </div>
+                        <div className="card-body">
+                          <span className="cap-val">
+                            <MdWaterDrop /> {Number(c.capacidad).toLocaleString()} Lts
+                          </span>
+                          <span className="model-name">
+                            <MdDirectionsCar /> {c.modelo || "Cisterna"}
+                          </span>
+                        </div>
+                        <div className="card-footer">
+                          <span>Hacer Recarga con este Camión →</span>
+                        </div>
+                      </CardSelectionItem>
+                    ))}
+                  </GridSelectionContainer>
                 </>
               )}
-            </FormGroup>
+            </ModalBody>
+          </StepSection>
+        )}
 
-            {/* 2. MONTO DEL VIAJE */}
-            <FormGroup>
-              <Label>
-                <MdAttachMoney className="icon" /> Monto de la Recarga ($): <span className="req">*</span>
-              </Label>
-              <Input
-                type="number"
-                step="0.01"
-                min="0.01"
-                placeholder="Ej: 15.00"
-                value={monto}
-                onChange={(e) => setMonto(e.target.value)}
-                required
-              />
-            </FormGroup>
+        {/* ========================================================= */}
+        {/* VISTA 2: CUADRÍCULA DE CHOFERES (ADMIN Y REGISTRADOR)     */}
+        {/* ========================================================= */}
+        {pasoModal === "cuadricula_admin_chofer" && (
+          <StepSection>
+            <ModalHeader>
+              <HeaderInfo>
+                <HeaderBadge>👤</HeaderBadge>
+                <div>
+                  <h3>Paso 1: Seleccionar Chofer</h3>
+                  <p>Indica el chofer que se encuentra realizando la recarga</p>
+                </div>
+              </HeaderInfo>
+              <CloseBtn onClick={onClose} title="Cerrar modal">
+                <MdClose />
+              </CloseBtn>
+            </ModalHeader>
 
-            {/* 3. FOTO DEL CAMIÓN */}
-            <FormGroup>
-              <Label>
-                <MdPhotoCamera className="icon" /> Foto de Evidencia de la Cisterna en el Pozo:{" "}
-                {user?.role === "registrador" || user?.role === "camionero" ? (
-                  <span className="req">* (Obligatoria)</span>
-                ) : (
-                  <span className="optional">(Opcional)</span>
-                )}
-              </Label>
-              <FileInputBox>
+            <ModalBody>
+              <SearchGridInputBox>
+                <MdSearch className="search-ico" />
                 <input
-                  type="file"
-                  id="foto-camion-input"
-                  accept="image/*"
-                  capture="environment"
-                  onChange={handleFotoCamionChange}
+                  type="text"
+                  placeholder="Buscar chofer por nombre o cédula..."
+                  value={busquedaChofer}
+                  onChange={(e) => setBusquedaChofer(e.target.value)}
                 />
-                <FileInputLabel htmlFor="foto-camion-input">
-                  <MdPhotoCamera /> {fotoCamion ? "Cambiar foto del camión" : "Tomar foto o subir archivo"}
-                </FileInputLabel>
-                {previewCamion && (
-                  <PreviewWrapper>
-                    <PreviewImage src={previewCamion} alt="Vista previa camión" />
-                    <RemovePreviewBtn
+              </SearchGridInputBox>
+
+              {mostrarFormNuevoChofer ? (
+                <InlineFormCard onSubmit={handleGuardarNuevoChofer}>
+                  <div className="form-head">
+                    <h4>
+                      <MdAddCircleOutline /> Registrar Nuevo Chofer en el Pozo
+                    </h4>
+                    <button
                       type="button"
-                      onClick={() => {
-                        setFotoCamion(null);
-                        setPreviewCamion(null);
-                      }}
-                      title="Quitar foto"
+                      className="btn-cancel-inline"
+                      onClick={() => setMostrarFormNuevoChofer(false)}
                     >
-                      <MdDeleteOutline />
-                    </RemovePreviewBtn>
-                  </PreviewWrapper>
+                      Cancelar
+                    </button>
+                  </div>
+                  <div className="form-inputs-grid">
+                    <div>
+                      <label>Nombre Completo: *</label>
+                      <input
+                        type="text"
+                        placeholder="Ej: Pedro Pérez"
+                        value={nuevoChoferNombre}
+                        onChange={(e) => setNuevoChoferNombre(e.target.value)}
+                        required
+                        autoFocus
+                      />
+                    </div>
+                    <div>
+                      <label>Cédula de Identidad:</label>
+                      <input
+                        type="text"
+                        placeholder="Ej: 12345678"
+                        value={nuevoChoferCedula}
+                        onChange={(e) => setNuevoChoferCedula(e.target.value)}
+                      />
+                    </div>
+                    <div>
+                      <label>Teléfono:</label>
+                      <input
+                        type="text"
+                        placeholder="Ej: 0414-1234567"
+                        value={nuevoChoferTelefono}
+                        onChange={(e) => setNuevoChoferTelefono(e.target.value)}
+                      />
+                    </div>
+                  </div>
+                  <div className="form-actions">
+                    <button
+                      type="button"
+                      className="btn-sec"
+                      onClick={() => setMostrarFormNuevoChofer(false)}
+                      disabled={guardandoInline}
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      type="submit"
+                      className="btn-pri emerald"
+                      disabled={guardandoInline}
+                    >
+                      {guardandoInline ? "Guardando..." : "✅ Guardar Chofer y Continuar"}
+                    </button>
+                  </div>
+                </InlineFormCard>
+              ) : (
+                <GridSelectionContainer>
+                  {/* Tarjeta Especial: Registrar Nuevo Chofer */}
+                  <SpecialCardCreate
+                    type="button"
+                    $theme="emerald"
+                    onClick={() => setMostrarFormNuevoChofer(true)}
+                  >
+                    <div className="ico-box">
+                      <MdAddCircleOutline />
+                    </div>
+                    <h4>+ Registrar Nuevo Chofer</h4>
+                    <p>Crear chofer en el pozo y continuar</p>
+                  </SpecialCardCreate>
+
+                  {/* Choferes existentes */}
+                  {choferesFiltrados.map((ch) => {
+                    const countCam = camiones.filter((t) => {
+                      const choferStr = (t.chofer || "").trim().toLowerCase();
+                      if (choferStr.includes("sin")) return false;
+                      const matchId = t.camionero_id && String(t.camionero_id) === String(ch.id);
+                      const matchPerfil = ch.perfil_id && t.perfil_id === ch.perfil_id;
+                      const matchNombre = ch.nombre && choferStr === ch.nombre.trim().toLowerCase();
+                      return matchId || matchPerfil || matchNombre;
+                    }).length;
+
+                    return (
+                      <CardSelectionItem
+                        key={ch.id}
+                        type="button"
+                        onClick={() => {
+                          setChoferSeleccionado(ch);
+                          setPasoModal("cuadricula_admin_camion");
+                        }}
+                      >
+                        <div className="card-top">
+                          <div className="avatar-chip">
+                            <MdPerson />
+                          </div>
+                          <span className="count-badge">
+                            {countCam} {countCam === 1 ? "camión" : "camiones"}
+                          </span>
+                        </div>
+                        <div className="card-body">
+                          <span className="main-title">{ch.nombre}</span>
+                          <span className="sub-detail">
+                            C.I. {ch.cedula || "No registrada"}
+                            {ch.telefono ? ` • 📞 ${ch.telefono}` : ""}
+                          </span>
+                        </div>
+                        <div className="card-footer">
+                          <span>Seleccionar Chofer →</span>
+                        </div>
+                      </CardSelectionItem>
+                    );
+                  })}
+                </GridSelectionContainer>
+              )}
+            </ModalBody>
+          </StepSection>
+        )}
+
+        {/* ========================================================= */}
+        {/* VISTA 3: CUADRÍCULA DE CAMIONES DEL CHOFER (ADMIN / REG) */}
+        {/* ========================================================= */}
+        {pasoModal === "cuadricula_admin_camion" && (
+          <StepSection>
+            <ModalHeader>
+              <HeaderInfo>
+                <HeaderBadge>🚛</HeaderBadge>
+                <div>
+                  <h3>Paso 2: Seleccionar Unidad Cisterna</h3>
+                  <p>
+                    Chofer seleccionado: <strong>{choferSeleccionado?.nombre}</strong>
+                  </p>
+                </div>
+              </HeaderInfo>
+              <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
+                <BtnBackPill
+                  type="button"
+                  onClick={() => {
+                    setMostrarFormNuevoCamion(false);
+                    setPasoModal("cuadricula_admin_chofer");
+                  }}
+                >
+                  <MdArrowBack /> Cambiar Chofer
+                </BtnBackPill>
+                <CloseBtn onClick={onClose} title="Cerrar modal">
+                  <MdClose />
+                </CloseBtn>
+              </div>
+            </ModalHeader>
+
+            <ModalBody>
+              {mostrarFormNuevoCamion ? (
+                <InlineFormCard onSubmit={handleGuardarNuevoCamion}>
+                  <div className="form-head">
+                    <h4>
+                      <MdAddCircleOutline /> Nueva Cisterna para "{choferSeleccionado?.nombre}"
+                    </h4>
+                    <button
+                      type="button"
+                      className="btn-cancel-inline"
+                      onClick={() => setMostrarFormNuevoCamion(false)}
+                    >
+                      Cancelar
+                    </button>
+                  </div>
+                  <div className="form-inputs-grid">
+                    <div>
+                      <label>Placa del Camión: *</label>
+                      <input
+                        type="text"
+                        placeholder="Ej: A12BC34"
+                        value={nuevoCamionPlaca}
+                        onChange={(e) => setNuevoCamionPlaca(e.target.value.toUpperCase())}
+                        required
+                        autoFocus
+                      />
+                    </div>
+                    <div>
+                      <label>Capacidad (Litros): *</label>
+                      <input
+                        type="number"
+                        placeholder="Ej: 10000"
+                        value={nuevoCamionCapacidad}
+                        onChange={(e) => setNuevoCamionCapacidad(e.target.value)}
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label>Modelo / Marca: *</label>
+                      <input
+                        type="text"
+                        placeholder="Ej: Mack, Ford, Iveco..."
+                        value={nuevoCamionModelo}
+                        onChange={(e) => setNuevoCamionModelo(e.target.value)}
+                        required
+                      />
+                    </div>
+                  </div>
+                  <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", marginTop: "8px" }}>
+                    <span style={{ fontSize: "12px", color: "#94a3b8" }}>Presets rápidos:</span>
+                    {PRESETS_CAPACIDAD.map((p) => (
+                      <PresetPillBtn
+                        key={p}
+                        type="button"
+                        onClick={() => setNuevoCamionCapacidad(p)}
+                      >
+                        {p.toLocaleString()} Lts
+                      </PresetPillBtn>
+                    ))}
+                  </div>
+                  <div className="form-actions">
+                    <button
+                      type="button"
+                      className="btn-sec"
+                      onClick={() => setMostrarFormNuevoCamion(false)}
+                      disabled={guardandoInline}
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      type="submit"
+                      className="btn-pri purple"
+                      disabled={guardandoInline}
+                    >
+                      {guardandoInline ? "Guardando..." : "✅ Guardar Cisterna y Continuar"}
+                    </button>
+                  </div>
+                </InlineFormCard>
+              ) : (
+                <>
+                  {camionesDelChoferSeleccionado.length > 4 && (
+                    <SearchGridInputBox>
+                      <MdSearch className="search-ico" />
+                      <input
+                        type="text"
+                        placeholder="Buscar por placa o modelo..."
+                        value={busquedaCamionGrid}
+                        onChange={(e) => setBusquedaCamionGrid(e.target.value)}
+                      />
+                    </SearchGridInputBox>
+                  )}
+
+                  <GridSelectionContainer>
+                    {/* Tarjeta Especial: Registrar Nuevo Camión para este chofer */}
+                    <SpecialCardCreate
+                      type="button"
+                      $theme="purple"
+                      onClick={() => setMostrarFormNuevoCamion(true)}
+                    >
+                      <div className="ico-box">
+                        <MdAddCircleOutline />
+                      </div>
+                      <h4>+ Registrar Nueva Cisterna</h4>
+                      <p>Agregar unidad para {choferSeleccionado?.nombre}</p>
+                    </SpecialCardCreate>
+
+                    {/* Camiones del chofer */}
+                    {camionesFiltradosGrid.map((c) => (
+                      <CardSelectionItem
+                        key={c.id}
+                        type="button"
+                        onClick={() => {
+                          setCamionSeleccionadoId(c.id);
+                          setPasoModal("formulario");
+                        }}
+                      >
+                        <div className="card-top">
+                          <span className="plate-badge">{c.placa}</span>
+                          <span className="truck-icon">🚚</span>
+                        </div>
+                        <div className="card-body">
+                          <span className="cap-val">
+                            <MdWaterDrop /> {Number(c.capacidad).toLocaleString()} Lts
+                          </span>
+                          <span className="model-name">
+                            <MdDirectionsCar /> {c.modelo || "Cisterna"}
+                          </span>
+                        </div>
+                        <div className="card-footer">
+                          <span>Seleccionar para Cargar →</span>
+                        </div>
+                      </CardSelectionItem>
+                    ))}
+                  </GridSelectionContainer>
+                </>
+              )}
+            </ModalBody>
+          </StepSection>
+        )}
+
+        {/* ========================================================= */}
+        {/* VISTA 4: FORMULARIO PRINCIPAL DE REGISTRO DE RECARGA      */}
+        {/* ========================================================= */}
+        {pasoModal === "formulario" && (
+          <StepSection>
+            <ModalHeader>
+              <HeaderInfo>
+                <HeaderBadge>💧</HeaderBadge>
+                <div>
+                  <h3>Registrar Recarga de Agua</h3>
+                  <p>Ingresa los detalles del viaje cisterna y gestiona el cobro</p>
+                </div>
+              </HeaderInfo>
+              <CloseBtn onClick={onClose} title="Cerrar modal">
+                <MdClose />
+              </CloseBtn>
+            </ModalHeader>
+
+            <Form onSubmit={handleSubmit}>
+              <ModalBody>
+                {/* 1. TARJETA RESUMEN DE LA UNIDAD Y CHOFER SELECCIONADOS */}
+                {camionActual ? (
+                  <UnitSelectedCard>
+                    <div className="unit-icon-box">
+                      <MdLocalShipping />
+                    </div>
+                    <div className="unit-info">
+                      <div className="unit-header-line">
+                        <span className="plate-tag">{camionActual.placa}</span>
+                        <span className="driver-name">
+                          Chofer: <strong>{camionActual.chofer}</strong>
+                        </span>
+                      </div>
+                      <div className="unit-meta-line">
+                        <span>
+                          <MdWaterDrop /> Capacidad:{" "}
+                          <strong>{Number(camionActual.capacidad).toLocaleString()} Lts</strong>
+                        </span>
+                        {camionActual.modelo && (
+                          <span>
+                            <MdDirectionsCar /> {camionActual.modelo}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    {/* Botón para volver a elegir si es camionero con >1 camión o admin */}
+                    {((user?.role === "camionero" && camiones.length > 1) ||
+                      user?.role !== "camionero") && (
+                      <BtnChangeUnit
+                        type="button"
+                        onClick={() => {
+                          if (user?.role === "camionero") {
+                            setPasoModal("cuadricula_camionero");
+                          } else {
+                            setPasoModal("cuadricula_admin_chofer");
+                          }
+                        }}
+                      >
+                        <MdSwapHoriz /> Cambiar
+                      </BtnChangeUnit>
+                    )}
+                  </UnitSelectedCard>
+                ) : (
+                  <AlertaSinCamionModal>
+                    ⚠️ No hay camión seleccionado.{" "}
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setPasoModal(
+                          user?.role === "camionero"
+                            ? "cuadricula_camionero"
+                            : "cuadricula_admin_chofer"
+                        )
+                      }
+                    >
+                      Elegir unidad
+                    </button>
+                  </AlertaSinCamionModal>
                 )}
-              </FileInputBox>
-            </FormGroup>
 
-            {/* 4. SELECTOR DE TIPO DE REGISTRO: PAGADO vs DEUDA */}
-            <SectionDivider>
-              <span>Tipo de Transacción</span>
-            </SectionDivider>
-
-            <ToggleGrid>
-              <ToggleOption
-                type="button"
-                $active={tipoRegistro === "pagado"}
-                onClick={() => setTipoRegistro("pagado")}
-              >
-                <div className="icon-wrap paid">
-                  <MdCheckCircle />
-                </div>
-                <div>
-                  <h4>Marcar como Pagado</h4>
-                  <p>Registra la referencia bancaria y comprobante</p>
-                </div>
-              </ToggleOption>
-
-              <ToggleOption
-                type="button"
-                $active={tipoRegistro === "deuda"}
-                onClick={() => setTipoRegistro("deuda")}
-              >
-                <div className="icon-wrap debt">
-                  <MdHourglassEmpty />
-                </div>
-                <div>
-                  <h4>Cargar como Deuda</h4>
-                  <p>Se enviará a Cuentas por Cobrar por camión</p>
-                </div>
-              </ToggleOption>
-            </ToggleGrid>
-
-            {/* 5. CAMPOS CONDICIONALES SI ES MARCADO COMO PAGADO */}
-            {tipoRegistro === "pagado" && (
-              <PaidFieldsContainer>
+                {/* 2. MONTO A COBRAR */}
                 <FormGroup>
                   <Label>
-                    <MdPayments className="icon" /> Método de Pago:
+                    <MdAttachMoney className="icon" /> Monto a Cobrar ($): <span className="req">*</span>
                   </Label>
-                  <Select value={metodoPago} onChange={(e) => setMetodoPago(e.target.value)}>
-                    <option value="Transferencia">Transferencia Bancaria</option>
-                    <option value="Pago Móvil">Pago Móvil</option>
-                    <option value="Efectivo">Efectivo en Taquilla</option>
-                    <option value="Zelle">Zelle</option>
-                  </Select>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    min="0.01"
+                    placeholder="Ej: 15.00"
+                    value={monto}
+                    onChange={(e) => setMonto(e.target.value)}
+                    required
+                  />
                 </FormGroup>
 
-                {metodoPago !== "Efectivo" && (
-                  <FormGroup>
-                    <Label>
-                      <MdReceipt className="icon" /> Referencia Bancaria: <span className="req">* (Obligatoria)</span>
-                    </Label>
-                    <Input
-                      type="text"
-                      placeholder="Ej: 00984512"
-                      value={referencia}
-                      onChange={(e) => setReferencia(e.target.value)}
-                      required
-                    />
-                  </FormGroup>
-                )}
-
+                {/* 3. FOTO DEL CAMIÓN */}
                 <FormGroup>
                   <Label>
-                    <MdReceipt className="icon" /> Foto de la Factura / Comprobante de Pago:{" "}
+                    <MdPhotoCamera className="icon" /> Foto de Evidencia de la Cisterna en el Pozo:{" "}
                     {user?.role === "registrador" || user?.role === "camionero" ? (
                       <span className="req">* (Obligatoria)</span>
                     ) : (
@@ -605,23 +1037,25 @@ export function ModalRegistrarRecarga({ isOpen, onClose, onRecargaExitosa }) {
                   <FileInputBox>
                     <input
                       type="file"
-                      id="foto-comprobante-input"
+                      id="foto-camion-input"
                       accept="image/*"
-                      onChange={handleFotoComprobanteChange}
+                      capture="environment"
+                      onChange={handleFotoCamionChange}
                     />
-                    <FileInputLabel htmlFor="foto-comprobante-input" className="comprobante">
-                      <MdReceipt /> {fotoComprobante ? "Cambiar foto comprobante" : "Adjuntar foto de comprobante/factura"}
+                    <FileInputLabel htmlFor="foto-camion-input">
+                      <MdPhotoCamera />{" "}
+                      {fotoCamion ? "Cambiar foto del camión" : "Tomar foto o subir archivo"}
                     </FileInputLabel>
-                    {previewComprobante && (
+                    {previewCamion && (
                       <PreviewWrapper>
-                        <PreviewImage src={previewComprobante} alt="Vista previa comprobante" />
+                        <PreviewImage src={previewCamion} alt="Vista previa camión" />
                         <RemovePreviewBtn
                           type="button"
                           onClick={() => {
-                            setFotoComprobante(null);
-                            setPreviewComprobante(null);
+                            setFotoCamion(null);
+                            setPreviewCamion(null);
                           }}
-                          title="Quitar foto comprobante"
+                          title="Quitar foto"
                         >
                           <MdDeleteOutline />
                         </RemovePreviewBtn>
@@ -629,105 +1063,240 @@ export function ModalRegistrarRecarga({ isOpen, onClose, onRecargaExitosa }) {
                     )}
                   </FileInputBox>
                 </FormGroup>
-              </PaidFieldsContainer>
-            )}
 
-            {/* Mensaje informativo si es Deuda */}
-            {tipoRegistro === "deuda" && (
-              <DebtNoticeBox>
-                <MdHourglassEmpty />
-                <div>
-                  <strong>Aviso de Crédito / Deuda:</strong>
-                  <p>
-                    Esta recarga quedará registrada como <strong>pendiente</strong>. Aparecerá en el módulo de{" "}
-                    <strong>Cuentas por Cobrar</strong> acumulada bajo este camión para su posterior cobro.
-                  </p>
-                </div>
-              </DebtNoticeBox>
-            )}
+                {/* 4. SELECTOR DE TIPO DE REGISTRO: PAGADO vs DEUDA */}
+                <SectionDivider>
+                  <span>Tipo de Transacción</span>
+                </SectionDivider>
 
-            {/* 6. NOTA U OBSERVACIÓN PARA REVISIÓN */}
-            <FormGroup>
-              <Label>
-                <MdEditNote className="icon" /> Nota u Observación de la Carga: <span className="optional">(Opcional para revisión posterior)</span>
-              </Label>
-              <Textarea
-                rows="2"
-                placeholder="Ej: Chofer reportó novedad, pendiente validar en taquilla..."
-                value={nota}
-                onChange={(e) => setNota(e.target.value)}
-              />
-            </FormGroup>
-          </ModalBody>
+                <ToggleGrid>
+                  <ToggleOption
+                    type="button"
+                    $active={tipoRegistro === "pagado"}
+                    onClick={() => setTipoRegistro("pagado")}
+                  >
+                    <div className="icon-wrap paid">
+                      <MdCheckCircle />
+                    </div>
+                    <div>
+                      <h4>Marcar como Pagado</h4>
+                      <p>Registra la referencia bancaria y comprobante</p>
+                    </div>
+                  </ToggleOption>
 
-          <ModalFooter>
-            <CancelButton type="button" onClick={onClose} disabled={loading}>
-              Cancelar
-            </CancelButton>
+                  <ToggleOption
+                    type="button"
+                    $active={tipoRegistro === "deuda"}
+                    onClick={() => setTipoRegistro("deuda")}
+                  >
+                    <div className="icon-wrap debt">
+                      <MdHourglassEmpty />
+                    </div>
+                    <div>
+                      <h4>Cargar como Deuda</h4>
+                      <p>Se enviará a Cuentas por Cobrar por camión</p>
+                    </div>
+                  </ToggleOption>
+                </ToggleGrid>
 
-            {tipoRegistro === "pagado" ? (
-              <SubmitButton type="submit" $variant="paid" disabled={loading || cargandoCamiones}>
-                {loading ? "Procesando pago..." : "✅ Registrar Pago de Recarga"}
-              </SubmitButton>
-            ) : (
-              <SubmitButton type="submit" $variant="debt" disabled={loading || cargandoCamiones}>
-                {loading ? "Guardando deuda..." : "⏳ Cargar Recarga como Deuda"}
-              </SubmitButton>
-            )}
-          </ModalFooter>
-        </Form>
+                {/* 5. CAMPOS CONDICIONALES SI ES MARCADO COMO PAGADO */}
+                {tipoRegistro === "pagado" && (
+                  <PaidFieldsContainer>
+                    <FormGroup>
+                      <Label>
+                        <MdPayments className="icon" /> Método de Pago:
+                      </Label>
+                      <Select
+                        value={metodoPago}
+                        onChange={(e) => setMetodoPago(e.target.value)}
+                      >
+                        <option value="Transferencia">Transferencia Bancaria</option>
+                        <option value="Pago Móvil">Pago Móvil</option>
+                        <option value="Efectivo">Efectivo en Taquilla</option>
+                        <option value="Zelle">Zelle</option>
+                      </Select>
+                    </FormGroup>
+
+                    {metodoPago !== "Efectivo" && (
+                      <FormGroup>
+                        <Label>
+                          <MdConfirmationNumber className="icon" /> Número de Referencia Bancaria:{" "}
+                          <span className="req">* (Obligatoria)</span>
+                        </Label>
+                        <Input
+                          type="text"
+                          placeholder="Ej: 00481923"
+                          value={referencia}
+                          onChange={(e) => setReferencia(e.target.value)}
+                          required
+                        />
+                      </FormGroup>
+                    )}
+
+                    <FormGroup>
+                      <Label>
+                        <MdReceipt className="icon" /> Foto de la Factura / Comprobante de Pago:{" "}
+                        {user?.role === "registrador" || user?.role === "camionero" ? (
+                          <span className="req">* (Obligatoria)</span>
+                        ) : (
+                          <span className="optional">(Opcional)</span>
+                        )}
+                      </Label>
+                      <FileInputBox>
+                        <input
+                          type="file"
+                          id="foto-comprobante-input"
+                          accept="image/*"
+                          onChange={handleFotoComprobanteChange}
+                        />
+                        <FileInputLabel htmlFor="foto-comprobante-input" className="comprobante">
+                          <MdReceipt />{" "}
+                          {fotoComprobante
+                            ? "Cambiar foto comprobante"
+                            : "Adjuntar foto de comprobante/factura"}
+                        </FileInputLabel>
+                        {previewComprobante && (
+                          <PreviewWrapper>
+                            <PreviewImage src={previewComprobante} alt="Vista previa comprobante" />
+                            <RemovePreviewBtn
+                              type="button"
+                              onClick={() => {
+                                setFotoComprobante(null);
+                                setPreviewComprobante(null);
+                              }}
+                              title="Quitar foto comprobante"
+                            >
+                              <MdDeleteOutline />
+                            </RemovePreviewBtn>
+                          </PreviewWrapper>
+                        )}
+                      </FileInputBox>
+                    </FormGroup>
+                  </PaidFieldsContainer>
+                )}
+
+                {/* Mensaje informativo si es Deuda */}
+                {tipoRegistro === "deuda" && (
+                  <DebtNoticeBox>
+                    <MdHourglassEmpty />
+                    <div>
+                      <strong>Aviso de Crédito / Deuda:</strong>
+                      <p>
+                        Esta recarga quedará registrada como <strong>pendiente</strong>.
+                        Aparecerá en el módulo de <strong>Cuentas por Cobrar</strong> acumulada bajo
+                        este camión.
+                      </p>
+                    </div>
+                  </DebtNoticeBox>
+                )}
+
+                {/* 6. NOTA U OBSERVACIÓN */}
+                <FormGroup>
+                  <Label>
+                    <MdEditNote className="icon" /> Nota u Observación de la Carga:{" "}
+                    <span className="optional">(Opcional para revisión posterior)</span>
+                  </Label>
+                  <Textarea
+                    rows="2"
+                    placeholder="Ej: Chofer reportó novedad, pendiente validar en taquilla..."
+                    value={nota}
+                    onChange={(e) => setNota(e.target.value)}
+                  />
+                </FormGroup>
+              </ModalBody>
+
+              <ModalFooter>
+                <CancelButton type="button" onClick={onClose} disabled={loading}>
+                  Cancelar
+                </CancelButton>
+
+                {tipoRegistro === "pagado" ? (
+                  <SubmitButton
+                    type="submit"
+                    $variant="paid"
+                    disabled={loading || !camionSeleccionadoId}
+                  >
+                    {loading ? "Procesando pago..." : "✅ Registrar Pago de Recarga"}
+                  </SubmitButton>
+                ) : (
+                  <SubmitButton
+                    type="submit"
+                    $variant="debt"
+                    disabled={loading || !camionSeleccionadoId}
+                  >
+                    {loading ? "Guardando deuda..." : "⏳ Cargar Recarga como Deuda"}
+                  </SubmitButton>
+                )}
+              </ModalFooter>
+            </Form>
+          </StepSection>
+        )}
       </ModalContainer>
     </Overlay>
   );
 }
 
+// 🎨 ANIMACIONES
+const fadeIn = keyframes`
+  from { opacity: 0; }
+  to { opacity: 1; }
+`;
+
+const fadeInScale = keyframes`
+  0% {
+    opacity: 0;
+    transform: scale(0.96) translateY(10px);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+`;
+
 // 🎨 STYLED COMPONENTS MODERN GLASSMORPHIC MODAL
 const Overlay = styled.div`
   position: fixed;
   inset: 0;
-  background: rgba(4, 9, 20, 0.82);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
+  background: rgba(4, 9, 20, 0.85);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 2000;
   padding: 16px;
-  animation: fadeIn 0.2s ease-out;
+  animation: ${fadeIn} 0.2s ease-out;
 `;
 
 const ModalContainer = styled.div`
-  background: #111827;
-  border: 1px solid rgba(0, 195, 255, 0.25);
-  border-radius: 20px;
+  background: #0f172a;
+  border: 1px solid rgba(0, 195, 255, 0.3);
+  border-radius: 24px;
   width: 100%;
-  max-width: 620px;
+  max-width: 760px;
   max-height: 92vh;
   display: flex;
   flex-direction: column;
-  box-shadow: 0 25px 60px rgba(0, 0, 0, 0.7), 0 0 35px rgba(0, 195, 255, 0.15);
+  box-shadow: 0 25px 60px rgba(0, 0, 0, 0.8), 0 0 40px rgba(0, 195, 255, 0.15);
   overflow: hidden;
-  animation: slideUp 0.25s ease-out;
+  position: relative;
+  transition: all 0.25s ease-in-out;
+`;
 
-  @keyframes slideUp {
-    from {
-      opacity: 0;
-      transform: translateY(20px) scale(0.97);
-    }
-    to {
-      opacity: 1;
-      transform: translateY(0) scale(1);
-    }
-  }
+const StepSection = styled.div`
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  animation: ${fadeInScale} 0.26s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 `;
 
 const ModalHeader = styled.div`
   display: flex;
-  align-items: center;
   justify-content: space-between;
+  align-items: center;
   padding: 20px 24px;
-  background: rgba(17, 24, 39, 0.95);
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(15, 23, 42, 0.85);
 `;
 
 const HeaderInfo = styled.div`
@@ -736,29 +1305,35 @@ const HeaderInfo = styled.div`
   gap: 14px;
 
   h3 {
-    margin: 0 0 2px 0;
+    margin: 0;
     font-size: 19px;
     font-weight: 700;
     color: #ffffff;
+    letter-spacing: -0.3px;
   }
 
   p {
-    margin: 0;
-    font-size: 12px;
+    margin: 3px 0 0 0;
+    font-size: 13px;
     color: #94a3b8;
+
+    strong {
+      color: #38bdf8;
+    }
   }
 `;
 
 const HeaderBadge = styled.div`
   width: 44px;
   height: 44px;
-  border-radius: 12px;
-  background: linear-gradient(135deg, rgba(0, 195, 255, 0.25), rgba(0, 114, 255, 0.25));
-  border: 1px solid rgba(0, 195, 255, 0.4);
+  border-radius: 14px;
+  background: rgba(0, 195, 255, 0.12);
+  border: 1px solid rgba(0, 195, 255, 0.3);
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: 22px;
+  flex-shrink: 0;
 `;
 
 const CloseBtn = styled.button`
@@ -773,20 +1348,33 @@ const CloseBtn = styled.button`
   justify-content: center;
   font-size: 20px;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all 0.2s;
 
   &:hover {
-    color: #ffffff;
     background: rgba(239, 68, 68, 0.2);
     border-color: rgba(239, 68, 68, 0.4);
+    color: #ef4444;
   }
 `;
 
-const Form = styled.form`
+const BtnBackPill = styled.button`
+  background: rgba(0, 195, 255, 0.12);
+  border: 1px solid rgba(0, 195, 255, 0.3);
+  color: #38bdf8;
+  padding: 8px 14px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
   display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  flex: 1;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.2s;
+
+  &:hover {
+    background: rgba(0, 195, 255, 0.25);
+    color: #ffffff;
+  }
 `;
 
 const ModalBody = styled.div`
@@ -794,21 +1382,27 @@ const ModalBody = styled.div`
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  gap: 20px;
 
   &::-webkit-scrollbar {
     width: 6px;
   }
   &::-webkit-scrollbar-thumb {
     background: rgba(255, 255, 255, 0.15);
-    border-radius: 3px;
+    border-radius: 4px;
   }
+`;
+
+const Form = styled.form`
+  display: flex;
+  flex-direction: column;
+  height: 100%;
 `;
 
 const FormGroup = styled.div`
   display: flex;
   flex-direction: column;
-  gap: 7px;
+  gap: 8px;
 `;
 
 const Label = styled.label`
@@ -821,269 +1415,590 @@ const Label = styled.label`
 
   .icon {
     color: #00c3ff;
-    font-size: 16px;
+    font-size: 17px;
   }
 
   .req {
-    color: #f87171;
-    font-size: 11px;
+    color: #ef4444;
+    font-size: 12px;
   }
 
   .optional {
-    color: #94a3b8;
-    font-size: 11px;
+    color: #64748b;
+    font-size: 12px;
     font-weight: 400;
   }
 `;
 
 const Input = styled.input`
-  width: 100%;
-  padding: 11px 14px;
-  background: rgba(15, 23, 42, 0.7);
+  background: rgba(15, 23, 42, 0.8);
   border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 10px;
+  border-radius: 12px;
+  padding: 12px 16px;
   color: #ffffff;
   font-size: 14px;
   outline: none;
-  transition: all 0.2s ease;
-  box-sizing: border-box;
+  transition: all 0.2s;
 
   &:focus {
     border-color: #00c3ff;
-    background: rgba(15, 23, 42, 0.95);
-    box-shadow: 0 0 10px rgba(0, 195, 255, 0.25);
-  }
-`;
-
-const Textarea = styled.textarea`
-  width: 100%;
-  padding: 11px 14px;
-  background: rgba(15, 23, 42, 0.7);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 10px;
-  color: #ffffff;
-  font-size: 13px;
-  font-family: inherit;
-  outline: none;
-  resize: vertical;
-  min-height: 58px;
-  transition: all 0.2s ease;
-  box-sizing: border-box;
-
-  &:focus {
-    border-color: #00c3ff;
-    background: rgba(15, 23, 42, 0.95);
-    box-shadow: 0 0 10px rgba(0, 195, 255, 0.25);
+    box-shadow: 0 0 15px rgba(0, 195, 255, 0.25);
   }
 `;
 
 const Select = styled.select`
-  width: 100%;
-  padding: 11px 14px;
   background: #0f172a;
   border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 10px;
+  border-radius: 12px;
+  padding: 12px 16px;
   color: #ffffff;
   font-size: 14px;
   outline: none;
   cursor: pointer;
-  box-sizing: border-box;
-
-  option {
-    background: #111827;
-    color: #ffffff;
-  }
+  transition: all 0.2s;
 
   &:focus {
     border-color: #00c3ff;
-    box-shadow: 0 0 10px rgba(0, 195, 255, 0.25);
+    box-shadow: 0 0 15px rgba(0, 195, 255, 0.25);
   }
 `;
 
-const SearchBoxWrapper = styled.div`
-  position: relative;
+const Textarea = styled.textarea`
+  background: rgba(15, 23, 42, 0.8);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 12px;
+  padding: 12px 16px;
+  color: #ffffff;
+  font-size: 13px;
+  outline: none;
+  resize: vertical;
+  transition: all 0.2s;
+
+  &:focus {
+    border-color: #00c3ff;
+    box-shadow: 0 0 15px rgba(0, 195, 255, 0.25);
+  }
+`;
+
+// 🔲 CUADRÍCULA DE SELECCIÓN Y TARJETAS
+const SearchGridInputBox = styled.div`
   display: flex;
   align-items: center;
-  width: 100%;
+  background: rgba(15, 23, 42, 0.9);
+  border: 1px solid rgba(0, 195, 255, 0.3);
+  border-radius: 12px;
+  padding: 8px 14px;
+  gap: 10px;
 
   .search-ico {
-    position: absolute;
-    left: 14px;
-    font-size: 18px;
-    color: #38bdf8;
-    pointer-events: none;
+    color: #00c3ff;
+    font-size: 20px;
+    flex-shrink: 0;
   }
-`;
 
-const SearchInput = styled(Input)`
-  padding-left: 42px;
-  padding-right: 38px;
-  font-size: 14px;
-`;
-
-const ClearBtn = styled.button`
-  position: absolute;
-  right: 10px;
-  background: rgba(255, 255, 255, 0.08);
-  border: none;
-  color: #94a3b8;
-  width: 24px;
-  height: 24px;
-  border-radius: 6px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  font-size: 15px;
-
-  &:hover {
+  input {
+    flex: 1;
+    background: transparent;
+    border: none;
     color: #ffffff;
-    background: rgba(255, 255, 255, 0.2);
-  }
-`;
+    font-size: 14px;
+    outline: none;
 
-const DynamicTruckDropdown = styled.div`
-  position: absolute;
-  top: 100%;
-  left: 0;
-  right: 0;
-  margin-top: 6px;
-  background: #0f172a;
-  border: 1px solid rgba(0, 195, 255, 0.35);
-  border-radius: 12px;
-  max-height: 240px;
-  overflow-y: auto;
-  z-index: 1000;
-  box-shadow: 0 15px 35px rgba(0, 0, 0, 0.7);
-  display: flex;
-  flex-direction: column;
-  padding: 6px;
-  gap: 4px;
-
-  &::-webkit-scrollbar {
-    width: 6px;
-  }
-  &::-webkit-scrollbar-thumb {
-    background: rgba(0, 195, 255, 0.3);
-    border-radius: 4px;
-  }
-`;
-
-const TruckOptionItem = styled.button`
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  width: 100%;
-  padding: 10px 12px;
-  background: ${({ $active }) => ($active ? "rgba(0, 195, 255, 0.18)" : "transparent")};
-  border: 1px solid ${({ $active }) => ($active ? "rgba(0, 195, 255, 0.4)" : "transparent")};
-  border-radius: 8px;
-  cursor: pointer;
-  text-align: left;
-  transition: all 0.15s ease;
-
-  &:hover {
-    background: rgba(0, 195, 255, 0.12);
-    border-color: rgba(0, 195, 255, 0.3);
-  }
-
-  .truck-row-main {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-
-    .placa-badge {
-      font-weight: 700;
-      color: #38bdf8;
-      background: rgba(0, 195, 255, 0.12);
-      padding: 3px 8px;
-      border-radius: 6px;
-      font-size: 13px;
-      letter-spacing: 0.5px;
-    }
-
-    .chofer-label {
-      font-size: 13px;
-      color: #ffffff;
-      font-weight: 500;
-    }
-  }
-
-  .truck-row-meta {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-
-    .cap-badge {
-      font-size: 11px;
-      color: #cbd5e1;
-      background: rgba(255, 255, 255, 0.05);
-      padding: 2px 6px;
-      border-radius: 4px;
-    }
-
-    .modelo-badge {
-      font-size: 11px;
+    &::placeholder {
       color: #64748b;
     }
   }
 `;
 
-const DropdownItemNotice = styled.div`
-  padding: 18px 12px;
-  text-align: center;
-  font-size: 12px;
-  color: #94a3b8;
-`;
+const GridSelectionContainer = styled.div`
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(215px, 1fr));
+  gap: 16px;
 
-const ChangeTruckBtn = styled.button`
-  margin-left: auto;
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  color: #38bdf8;
-  padding: 3px 8px;
-  border-radius: 6px;
-  font-size: 11px;
-  font-weight: 600;
-  cursor: pointer;
-
-  &:hover {
-    background: rgba(0, 195, 255, 0.2);
-    border-color: #00c3ff;
-    color: #ffffff;
+  @media (max-width: 600px) {
+    grid-template-columns: 1fr;
   }
 `;
 
-const AlertaSinCamionModal = styled.div`
-  padding: 12px 14px;
-  background: rgba(245, 158, 11, 0.12);
-  border: 1px solid rgba(245, 158, 11, 0.35);
-  border-radius: 10px;
-  color: #fbbf24;
-  font-size: 13px;
-  line-height: 1.4;
+const CardSelectionItem = styled.button`
+  background: rgba(30, 41, 59, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 16px;
+  padding: 16px;
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  cursor: pointer;
+  transition: all 0.24s cubic-bezier(0.16, 1, 0.3, 1);
+  position: relative;
+  overflow: hidden;
+
+  &:hover {
+    transform: translateY(-4px);
+    background: rgba(30, 41, 59, 0.85);
+    border-color: rgba(0, 195, 255, 0.5);
+    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.5), 0 0 20px rgba(0, 195, 255, 0.25);
+
+    .card-footer span {
+      color: #38bdf8;
+    }
+  }
+
+  .card-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+
+    .plate-badge {
+      background: rgba(0, 195, 255, 0.15);
+      border: 1px solid rgba(0, 195, 255, 0.4);
+      color: #38bdf8;
+      font-weight: 800;
+      font-size: 13px;
+      letter-spacing: 0.8px;
+      padding: 4px 10px;
+      border-radius: 8px;
+    }
+
+    .truck-icon {
+      font-size: 20px;
+    }
+
+    .avatar-chip {
+      width: 36px;
+      height: 36px;
+      border-radius: 10px;
+      background: rgba(59, 130, 246, 0.15);
+      border: 1px solid rgba(59, 130, 246, 0.3);
+      color: #60a5fa;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+    }
+
+    .count-badge {
+      font-size: 11px;
+      color: #94a3b8;
+      background: rgba(255, 255, 255, 0.05);
+      padding: 3px 8px;
+      border-radius: 6px;
+    }
+  }
+
+  .card-body {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-bottom: 14px;
+
+    .cap-val {
+      font-size: 16px;
+      font-weight: 800;
+      color: #ffffff;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+
+      svg {
+        color: #00c3ff;
+      }
+    }
+
+    .model-name {
+      font-size: 12px;
+      color: #94a3b8;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+
+    .main-title {
+      font-size: 15px;
+      font-weight: 700;
+      color: #ffffff;
+    }
+
+    .sub-detail {
+      font-size: 12px;
+      color: #94a3b8;
+    }
+  }
+
+  .card-footer {
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+    padding-top: 10px;
+
+    span {
+      font-size: 11px;
+      font-weight: 600;
+      color: #64748b;
+      transition: color 0.2s;
+    }
+  }
 `;
 
-const CamionInfoPill = styled.div`
+// Tarjeta destacada especial para registrar nuevo chofer o camión
+const SpecialCardCreate = styled.button`
+  background: ${(props) =>
+    props.$theme === "emerald"
+      ? "linear-gradient(135deg, rgba(6, 78, 59, 0.4) 0%, rgba(6, 95, 70, 0.25) 100%)"
+      : "linear-gradient(135deg, rgba(76, 29, 149, 0.4) 0%, rgba(91, 33, 182, 0.25) 100%)"};
+  border: 1px dashed
+    ${(props) =>
+      props.$theme === "emerald"
+        ? "rgba(16, 185, 129, 0.6)"
+        : "rgba(139, 92, 246, 0.6)"};
+  border-radius: 16px;
+  padding: 20px 16px;
   display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-  padding: 8px 12px;
-  background: rgba(0, 195, 255, 0.08);
-  border: 1px dashed rgba(0, 195, 255, 0.25);
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.24s cubic-bezier(0.16, 1, 0.3, 1);
+  min-height: 150px;
+
+  &:hover {
+    transform: translateY(-4px);
+    background: ${(props) =>
+      props.$theme === "emerald"
+        ? "rgba(6, 95, 70, 0.6)"
+        : "rgba(91, 33, 182, 0.6)"};
+    border-style: solid;
+    border-color: ${(props) =>
+      props.$theme === "emerald" ? "#10b981" : "#a855f7"};
+    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.6),
+      0 0 25px
+        ${(props) =>
+          props.$theme === "emerald"
+            ? "rgba(16, 185, 129, 0.4)"
+            : "rgba(168, 85, 247, 0.4)"};
+  }
+
+  .ico-box {
+    width: 44px;
+    height: 44px;
+    border-radius: 12px;
+    background: ${(props) =>
+      props.$theme === "emerald"
+        ? "rgba(16, 185, 129, 0.2)"
+        : "rgba(168, 85, 247, 0.2)"};
+    color: ${(props) =>
+      props.$theme === "emerald" ? "#34d399" : "#c084fc"};
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 24px;
+    margin-bottom: 10px;
+  }
+
+  h4 {
+    margin: 0 0 4px 0;
+    font-size: 14px;
+    font-weight: 700;
+    color: ${(props) =>
+      props.$theme === "emerald" ? "#6ee7b7" : "#e9d5ff"};
+  }
+
+  p {
+    margin: 0;
+    font-size: 11px;
+    color: #94a3b8;
+  }
+`;
+
+// Formulario inline rápido para agregar chofer o camión
+const InlineFormCard = styled.form`
+  background: rgba(30, 41, 59, 0.7);
+  border: 1px solid rgba(0, 195, 255, 0.35);
+  border-radius: 18px;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  animation: ${fadeInScale} 0.2s ease-out;
+
+  .form-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+
+    h4 {
+      margin: 0;
+      font-size: 15px;
+      font-weight: 700;
+      color: #38bdf8;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .btn-cancel-inline {
+      background: transparent;
+      border: none;
+      color: #94a3b8;
+      font-size: 12px;
+      cursor: pointer;
+      text-decoration: underline;
+
+      &:hover {
+        color: #ffffff;
+      }
+    }
+  }
+
+  .form-inputs-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 12px;
+
+    div {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+
+      label {
+        font-size: 12px;
+        color: #cbd5e1;
+        font-weight: 600;
+      }
+
+      input {
+        background: #0f172a;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        border-radius: 10px;
+        padding: 10px 12px;
+        color: #ffffff;
+        font-size: 13px;
+        outline: none;
+
+        &:focus {
+          border-color: #00c3ff;
+        }
+      }
+    }
+  }
+
+  .form-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+
+    button {
+      padding: 10px 18px;
+      border-radius: 10px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      border: none;
+      transition: all 0.2s;
+    }
+
+    .btn-sec {
+      background: rgba(255, 255, 255, 0.08);
+      color: #cbd5e1;
+
+      &:hover {
+        background: rgba(255, 255, 255, 0.15);
+      }
+    }
+
+    .btn-pri {
+      color: #ffffff;
+
+      &.emerald {
+        background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+        box-shadow: 0 4px 15px rgba(16, 185, 129, 0.35);
+
+        &:hover {
+          box-shadow: 0 6px 20px rgba(16, 185, 129, 0.5);
+        }
+      }
+
+      &.purple {
+        background: linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%);
+        box-shadow: 0 4px 15px rgba(139, 92, 246, 0.35);
+
+        &:hover {
+          box-shadow: 0 6px 20px rgba(139, 92, 246, 0.5);
+        }
+      }
+    }
+  }
+`;
+
+const PresetPillBtn = styled.button`
+  background: rgba(15, 23, 42, 0.8);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #94a3b8;
+  font-size: 11px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s;
+
+  &:hover {
+    background: rgba(0, 195, 255, 0.15);
+    color: #38bdf8;
+    border-color: rgba(0, 195, 255, 0.3);
+  }
+`;
+
+// Tarjeta superior de la unidad seleccionada en el formulario
+const UnitSelectedCard = styled.div`
+  background: linear-gradient(135deg, rgba(15, 23, 42, 0.8) 0%, rgba(30, 41, 59, 0.8) 100%);
+  border: 1px solid rgba(0, 195, 255, 0.35);
+  border-radius: 16px;
+  padding: 14px 18px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+
+  .unit-icon-box {
+    width: 44px;
+    height: 44px;
+    border-radius: 12px;
+    background: rgba(0, 195, 255, 0.15);
+    color: #00c3ff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 24px;
+    flex-shrink: 0;
+  }
+
+  .unit-info {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+
+    .unit-header-line {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+
+      .plate-tag {
+        background: rgba(0, 195, 255, 0.2);
+        border: 1px solid rgba(0, 195, 255, 0.5);
+        color: #38bdf8;
+        font-weight: 800;
+        font-size: 13px;
+        padding: 3px 8px;
+        border-radius: 6px;
+        letter-spacing: 0.5px;
+      }
+
+      .driver-name {
+        font-size: 13px;
+        color: #e2e8f0;
+
+        strong {
+          color: #ffffff;
+        }
+      }
+    }
+
+    .unit-meta-line {
+      display: flex;
+      gap: 14px;
+      font-size: 12px;
+      color: #94a3b8;
+      flex-wrap: wrap;
+
+      span {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+
+        strong {
+          color: #38bdf8;
+        }
+      }
+    }
+  }
+`;
+
+const BtnChangeUnit = styled.button`
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: #cbd5e1;
+  padding: 6px 12px;
   border-radius: 8px;
   font-size: 12px;
-  color: #94a3b8;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  cursor: pointer;
+  transition: all 0.2s;
+  flex-shrink: 0;
 
-  strong {
+  &:hover {
+    background: rgba(0, 195, 255, 0.15);
+    border-color: rgba(0, 195, 255, 0.4);
     color: #38bdf8;
   }
 `;
 
+const EmptyGridNotice = styled.div`
+  text-align: center;
+  padding: 40px 20px;
+  background: rgba(15, 23, 42, 0.6);
+  border: 1px dashed rgba(255, 255, 255, 0.15);
+  border-radius: 16px;
+
+  .warn-ico {
+    font-size: 40px;
+    color: #f59e0b;
+    margin-bottom: 10px;
+  }
+
+  h4 {
+    color: #ffffff;
+    font-size: 16px;
+    margin: 0 0 6px 0;
+  }
+
+  p {
+    color: #94a3b8;
+    font-size: 13px;
+    margin: 0;
+  }
+`;
+
+const AlertaSinCamionModal = styled.div`
+  background: rgba(234, 179, 8, 0.12);
+  border: 1px solid rgba(234, 179, 8, 0.35);
+  color: #fef08a;
+  padding: 12px 16px;
+  border-radius: 12px;
+  font-size: 13px;
+  line-height: 1.5;
+
+  button {
+    background: #eab308;
+    border: none;
+    color: #000;
+    font-weight: 700;
+    padding: 3px 8px;
+    border-radius: 6px;
+    margin-left: 8px;
+    cursor: pointer;
+  }
+`;
+
+// FOTOS
 const FileInputBox = styled.div`
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
 
   input[type="file"] {
     display: none;
@@ -1091,92 +2006,96 @@ const FileInputBox = styled.div`
 `;
 
 const FileInputLabel = styled.label`
-  display: inline-flex;
+  display: flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
-  padding: 10px 16px;
-  background: rgba(30, 41, 59, 0.6);
+  gap: 10px;
+  padding: 14px 20px;
+  background: rgba(15, 23, 42, 0.8);
   border: 1px dashed rgba(0, 195, 255, 0.4);
-  border-radius: 10px;
+  border-radius: 14px;
   color: #38bdf8;
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all 0.2s;
 
   &:hover {
-    background: rgba(0, 195, 255, 0.15);
+    background: rgba(0, 195, 255, 0.1);
     border-color: #00c3ff;
   }
 
   &.comprobante {
-    border-color: rgba(52, 211, 153, 0.4);
-    color: #34d399;
+    border-color: rgba(34, 197, 94, 0.4);
+    color: #4ade80;
 
     &:hover {
-      background: rgba(52, 211, 153, 0.15);
-      border-color: #10b981;
+      background: rgba(34, 197, 94, 0.1);
+      border-color: #22c55e;
     }
   }
 `;
 
 const PreviewWrapper = styled.div`
   position: relative;
-  width: 120px;
-  height: 80px;
-  border-radius: 8px;
+  width: 100%;
+  max-height: 180px;
+  border-radius: 14px;
   overflow: hidden;
-  border: 1px solid rgba(255, 255, 255, 0.15);
+  border: 1px solid rgba(255, 255, 255, 0.1);
 `;
 
 const PreviewImage = styled.img`
   width: 100%;
-  height: 100%;
+  height: 180px;
   object-fit: cover;
+  display: block;
 `;
 
 const RemovePreviewBtn = styled.button`
   position: absolute;
-  top: 4px;
-  right: 4px;
+  top: 8px;
+  right: 8px;
   background: rgba(239, 68, 68, 0.85);
-  color: #ffffff;
   border: none;
-  border-radius: 4px;
-  width: 24px;
-  height: 24px;
+  color: #ffffff;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
   display: flex;
   align-items: center;
   justify-content: center;
+  font-size: 18px;
   cursor: pointer;
-  font-size: 14px;
+  transition: all 0.2s;
 
   &:hover {
     background: #ef4444;
+    transform: scale(1.05);
   }
 `;
 
+// TIPO DE REGISTRO
 const SectionDivider = styled.div`
   display: flex;
   align-items: center;
   text-align: center;
-  margin: 6px 0;
+  margin: 4px 0;
 
   &::before,
   &::after {
     content: "";
     flex: 1;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
   }
 
   span {
     padding: 0 12px;
     font-size: 12px;
-    font-weight: 700;
+    font-weight: 600;
+    color: #64748b;
     text-transform: uppercase;
     letter-spacing: 0.5px;
-    color: #64748b;
   }
 `;
 
@@ -1184,34 +2103,30 @@ const ToggleGrid = styled.div`
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 12px;
-
-  @media (max-width: 500px) {
-    grid-template-columns: 1fr;
-  }
 `;
 
 const ToggleOption = styled.button`
-  display: flex;
-  align-items: flex-start;
-  gap: 12px;
-  padding: 14px;
   background: ${(props) =>
-    props.$active ? "rgba(0, 195, 255, 0.12)" : "rgba(15, 23, 42, 0.6)"};
-  border: 2px solid
-    ${(props) => (props.$active ? "#00c3ff" : "rgba(255, 255, 255, 0.08)")};
+    props.$active ? "rgba(30, 41, 59, 0.9)" : "rgba(15, 23, 42, 0.6)"};
+  border: 1px solid
+    ${(props) =>
+      props.$active ? "rgba(0, 195, 255, 0.5)" : "rgba(255, 255, 255, 0.08)"};
   border-radius: 14px;
+  padding: 12px 14px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
   text-align: left;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all 0.2s;
 
   &:hover {
-    border-color: ${(props) => (props.$active ? "#00c3ff" : "rgba(255, 255, 255, 0.2)")};
-    transform: translateY(-1px);
+    border-color: rgba(0, 195, 255, 0.35);
   }
 
   .icon-wrap {
-    width: 36px;
-    height: 36px;
+    width: 38px;
+    height: 38px;
     border-radius: 10px;
     display: flex;
     align-items: center;
@@ -1220,21 +2135,21 @@ const ToggleOption = styled.button`
     flex-shrink: 0;
 
     &.paid {
-      background: rgba(16, 185, 129, 0.2);
-      color: #10b981;
-      border: 1px solid rgba(16, 185, 129, 0.4);
+      background: ${(props) =>
+        props.$active ? "rgba(34, 197, 94, 0.2)" : "rgba(34, 197, 94, 0.1)"};
+      color: #22c55e;
     }
 
     &.debt {
-      background: rgba(245, 158, 11, 0.2);
-      color: #f59e0b;
-      border: 1px solid rgba(245, 158, 11, 0.4);
+      background: ${(props) =>
+        props.$active ? "rgba(234, 179, 8, 0.2)" : "rgba(234, 179, 8, 0.1)"};
+      color: #eab308;
     }
   }
 
   h4 {
-    margin: 0 0 3px 0;
-    font-size: 14px;
+    margin: 0 0 2px 0;
+    font-size: 13px;
     font-weight: 700;
     color: #ffffff;
   }
@@ -1243,106 +2158,120 @@ const ToggleOption = styled.button`
     margin: 0;
     font-size: 11px;
     color: #94a3b8;
-    line-height: 1.3;
   }
 `;
 
 const PaidFieldsContainer = styled.div`
+  background: rgba(15, 23, 42, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 16px;
+  padding: 16px;
   display: flex;
   flex-direction: column;
-  gap: 16px;
-  padding: 16px;
-  background: rgba(16, 185, 129, 0.06);
-  border: 1px solid rgba(16, 185, 129, 0.25);
-  border-radius: 14px;
-  animation: fadeIn 0.2s ease-out;
+  gap: 14px;
 `;
 
 const DebtNoticeBox = styled.div`
+  background: rgba(234, 179, 8, 0.1);
+  border: 1px solid rgba(234, 179, 8, 0.3);
+  border-radius: 14px;
+  padding: 14px 18px;
   display: flex;
+  align-items: flex-start;
   gap: 12px;
-  padding: 14px;
-  background: rgba(245, 158, 11, 0.1);
-  border: 1px solid rgba(245, 158, 11, 0.3);
-  border-radius: 12px;
-  font-size: 13px;
-  color: #fcd34d;
+  color: #fef08a;
 
   svg {
-    font-size: 22px;
+    font-size: 24px;
+    color: #eab308;
     flex-shrink: 0;
-    color: #f59e0b;
+    margin-top: 2px;
+  }
+
+  strong {
+    display: block;
+    font-size: 13px;
+    margin-bottom: 2px;
   }
 
   p {
-    margin: 4px 0 0 0;
-    color: #cbd5e1;
+    margin: 0;
     font-size: 12px;
+    color: #cbd5e1;
     line-height: 1.4;
+
+    strong {
+      display: inline;
+      color: #fef08a;
+    }
   }
 `;
 
 const ModalFooter = styled.div`
   display: flex;
-  align-items: center;
   justify-content: flex-end;
   gap: 12px;
-  padding: 18px 24px;
-  background: rgba(17, 24, 39, 0.95);
+  padding: 16px 24px;
   border-top: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(15, 23, 42, 0.85);
 `;
 
 const CancelButton = styled.button`
-  padding: 11px 18px;
-  background: rgba(255, 255, 255, 0.05);
+  background: rgba(255, 255, 255, 0.06);
   border: 1px solid rgba(255, 255, 255, 0.1);
-  color: #94a3b8;
-  border-radius: 10px;
+  color: #cbd5e1;
+  padding: 12px 20px;
+  border-radius: 12px;
   font-size: 14px;
   font-weight: 600;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: all 0.2s;
 
-  &:hover {
+  &:hover:not(:disabled) {
+    background: rgba(255, 255, 255, 0.12);
     color: #ffffff;
-    background: rgba(255, 255, 255, 0.1);
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
   }
 `;
 
 const SubmitButton = styled.button`
-  padding: 11px 22px;
-  border: none;
-  border-radius: 10px;
-  color: #ffffff;
-  font-size: 14px;
-  font-weight: 700;
-  cursor: pointer;
-  transition: all 0.2s ease;
-
   background: ${(props) =>
     props.$variant === "paid"
       ? "linear-gradient(135deg, #10b981 0%, #059669 100%)"
-      : "linear-gradient(135deg, #f59e0b 0%, #d97706 100%)"};
-
-  box-shadow: 0 4px 15px
+      : "linear-gradient(135deg, #eab308 0%, #ca8a04 100%)"};
+  border: none;
+  color: #ffffff;
+  padding: 12px 24px;
+  border-radius: 12px;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  transition: all 0.2s;
+  box-shadow: 0 4px 20px
     ${(props) =>
       props.$variant === "paid"
-        ? "rgba(16, 185, 129, 0.35)"
-        : "rgba(245, 158, 11, 0.35)"};
+        ? "rgba(16, 185, 129, 0.4)"
+        : "rgba(234, 179, 8, 0.4)"};
 
   &:hover:not(:disabled) {
     transform: translateY(-2px);
-    box-shadow: 0 6px 20px
+    box-shadow: 0 6px 25px
       ${(props) =>
         props.$variant === "paid"
-          ? "rgba(16, 185, 129, 0.5)"
-          : "rgba(245, 158, 11, 0.5)"};
+          ? "rgba(16, 185, 129, 0.6)"
+          : "rgba(234, 179, 8, 0.6)"};
   }
 
   &:disabled {
-    opacity: 0.6;
+    opacity: 0.5;
     cursor: not-allowed;
     transform: none;
-    box-shadow: none;
   }
 `;
