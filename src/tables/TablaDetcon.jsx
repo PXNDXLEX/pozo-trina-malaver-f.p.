@@ -19,7 +19,11 @@ import {
   MdReceipt
 } from "react-icons/md";
 
+import { useAuthStore } from "../store/AuthStore";
+
 export function TablaDetcon({ refresh }) {
+  const user = useAuthStore((state) => state.user);
+
   const [datos, setDatos] = useState([]);
   const [fechasDisponibles, setFechasDisponibles] = useState([]);
   const [cargandoFechas, setCargandoFechas] = useState(false);
@@ -38,6 +42,44 @@ export function TablaDetcon({ refresh }) {
   const [busqueda, setBusqueda] = useState("");
   const [fotoModal, setFotoModal] = useState(null);
 
+  const resolverCamionesChofer = async () => {
+    if (user?.role !== "camionero" || !user?.id) return null;
+    const idsSet = new Set();
+    try {
+      const { data: cRow } = await supabase
+        .from("camioneros")
+        .select("id, nombre")
+        .eq("perfil_id", user.id)
+        .maybeSingle();
+
+      if (cRow?.id) {
+        const { data: pCam } = await supabase
+          .from("camiones")
+          .select("id")
+          .eq("camionero_id", cRow.id);
+        (pCam || []).forEach((t) => idsSet.add(t.id));
+      }
+
+      const { data: pPerf } = await supabase
+        .from("camiones")
+        .select("id")
+        .eq("perfil_id", user.id);
+      (pPerf || []).forEach((t) => idsSet.add(t.id));
+
+      const nombreChofer = cRow?.nombre || user?.nombre || user?.name;
+      if (nombreChofer && !nombreChofer.toLowerCase().includes("sin")) {
+        const { data: pNom } = await supabase
+          .from("camiones")
+          .select("id")
+          .ilike("chofer", nombreChofer.trim());
+        (pNom || []).forEach((t) => idsSet.add(t.id));
+      }
+    } catch (e) {
+      console.warn("Error resolviendo camiones en TablaDetcon:", e);
+    }
+    return Array.from(idsSet);
+  };
+
   // 1. Cargar lista de fechas únicas que tienen registros en la base de datos
   useEffect(() => {
     cargarFechasDisponibles();
@@ -51,10 +93,23 @@ export function TablaDetcon({ refresh }) {
   const cargarFechasDisponibles = async () => {
     setCargandoFechas(true);
     try {
-      const { data, error } = await supabase
+      let query = supabase
         .from("registros_carga")
         .select("fecha_carga")
         .order("fecha_carga", { ascending: false });
+
+      if (user?.role === "camionero") {
+        const ids = await resolverCamionesChofer();
+        if (ids && ids.length > 0) {
+          query = query.in("camion_id", ids);
+        } else if (ids && ids.length === 0) {
+          setFechasDisponibles([]);
+          setCargandoFechas(false);
+          return;
+        }
+      }
+
+      const { data, error } = await query;
 
       if (error) throw error;
 
@@ -80,6 +135,8 @@ export function TablaDetcon({ refresh }) {
         }));
 
         setFechasDisponibles(listaFechas);
+      } else {
+        setFechasDisponibles([]);
       }
     } catch (err) {
       console.error("Error al cargar fechas disponibles:", err.message);
@@ -91,6 +148,16 @@ export function TablaDetcon({ refresh }) {
   const consultarVentasPorFecha = async () => {
     setCargandoDatos(true);
     try {
+      let idsChofer = null;
+      if (user?.role === "camionero") {
+        idsChofer = await resolverCamionesChofer();
+        if (idsChofer && idsChofer.length === 0) {
+          setDatos([]);
+          setCargandoDatos(false);
+          return;
+        }
+      }
+
       let query = supabase
         .from("registros_carga")
         .select(`
@@ -101,10 +168,13 @@ export function TablaDetcon({ refresh }) {
           fecha_carga,
           url_foto,
           estatus,
-          nota,
           camiones ( placa, chofer, capacidad, modelo )
         `)
         .order("fecha_carga", { ascending: false });
+
+      if (idsChofer && idsChofer.length > 0) {
+        query = query.in("camion_id", idsChofer);
+      }
 
       if (!modoVerTodo && fechaSeleccionada) {
         // Crear inicio y fin del día en hora local
@@ -117,40 +187,13 @@ export function TablaDetcon({ refresh }) {
           .lte("fecha_carga", finDia.toISOString());
       }
 
-      let { data, error } = await query;
-      if (error) {
-        // Fallback si la columna 'nota' aún no existe en la base de datos
-        let fallbackQuery = supabase
-          .from("registros_carga")
-          .select(`
-            id,
-            monto,
-            metodo,
-            referencia,
-            fecha_carga,
-            url_foto,
-            estatus,
-            camiones ( placa, chofer, capacidad, modelo )
-          `)
-          .order("fecha_carga", { ascending: false });
-
-        if (!modoVerTodo && fechaSeleccionada) {
-          const [anio, mes, dia] = fechaSeleccionada.split("-").map(Number);
-          const inicioDia = new Date(anio, mes - 1, dia, 0, 0, 0, 0);
-          const finDia = new Date(anio, mes - 1, dia, 23, 59, 59, 999);
-
-          fallbackQuery = fallbackQuery
-            .gte("fecha_carga", inicioDia.toISOString())
-            .lte("fecha_carga", finDia.toISOString());
-        }
-
-        const resFallback = await fallbackQuery;
-        data = resFallback.data;
-      }
+      const { data, error } = await query;
+      if (error) throw error;
 
       setDatos(data || []);
     } catch (err) {
       console.error("Error al consultar ventas por fecha:", err.message);
+      setDatos([]);
     } finally {
       setCargandoDatos(false);
     }

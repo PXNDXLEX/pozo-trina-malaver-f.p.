@@ -189,12 +189,12 @@ export function MenuTemplate({ children }) {
                 </DropdownContainer>
               )}
 
-              {user?.role === "administrador" && (
+              {(user?.role === "administrador" || user?.role === "camionero") && (
                 <NavLink
                   to="/detalle-recarga"
                   className={location.pathname === "/detalle-recarga" ? "active" : ""}
                 >
-                  <MdWaterDrop className="nav-icon" /> Recargas
+                  <MdWaterDrop className="nav-icon" /> {user?.role === "camionero" ? "Mis Ventas" : "Recargas"}
                 </NavLink>
               )}
 
@@ -323,10 +323,10 @@ export function MenuTemplate({ children }) {
               </NavButtonMobile>
             )}
 
-            {user?.role === "administrador" && (
+            {(user?.role === "administrador" || user?.role === "camionero") && (
               <NavItemMobile to="/detalle-recarga" className={location.pathname === "/detalle-recarga" ? "active" : ""}>
                 <MdFormatListBulleted />
-                <span>Recargas</span>
+                <span>{user?.role === "camionero" ? "Mis Ventas" : "Recargas"}</span>
               </NavItemMobile>
             )}
 

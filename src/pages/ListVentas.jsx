@@ -4,7 +4,11 @@ import { MenuTemplate } from "../templates/MenuTemplate";
 import styled from "styled-components";
 import { MdWaterDrop } from "react-icons/md";
 
+import { useAuthStore } from "../store/AuthStore";
+
 export function ListVentas() {
+  const user = useAuthStore((state) => state.user);
+
   return (
     <MenuTemplate>
       <Container>
@@ -13,9 +17,13 @@ export function ListVentas() {
             <MdWaterDrop />
           </IconBadge>
           <div>
-            <h2>Control Detallado de Recargas</h2>
+            <h2>
+              {user?.role === "camionero" ? "Mis Ventas y Viajes de Agua" : "Control Detallado de Recargas"}
+            </h2>
             <p className="subtitle">
-              Consulta de viajes, arqueo diario y reporte de ventas filtrado por fecha con registros disponibles
+              {user?.role === "camionero"
+                ? "Consulta de viajes realizados por tus unidades cisterna, arqueo diario y reporte de ventas"
+                : "Consulta de viajes, arqueo diario y reporte de ventas filtrado por fecha con registros disponibles"}
             </p>
           </div>
         </Header>
