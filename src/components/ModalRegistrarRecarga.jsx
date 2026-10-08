@@ -706,8 +706,10 @@ export function ModalRegistrarRecarga({ isOpen, onClose, onRecargaExitosa }) {
                     <div className="ico-box">
                       <MdAddCircleOutline />
                     </div>
-                    <h4>+ Registrar Nuevo Chofer</h4>
-                    <p>Crear chofer en el pozo y continuar</p>
+                    <div className="create-text-wrapper">
+                      <h4>+ Registrar Nuevo Chofer</h4>
+                      <p>Crear chofer en el pozo y continuar</p>
+                    </div>
                   </SpecialCardCreate>
 
                   {/* Choferes existentes */}
@@ -890,8 +892,10 @@ export function ModalRegistrarRecarga({ isOpen, onClose, onRecargaExitosa }) {
                       <div className="ico-box">
                         <MdAddCircleOutline />
                       </div>
-                      <h4>+ Registrar Nueva Cisterna</h4>
-                      <p>Agregar unidad para {choferSeleccionado?.nombre}</p>
+                      <div className="create-text-wrapper">
+                        <h4>+ Registrar Nueva Cisterna</h4>
+                        <p>Agregar unidad para {choferSeleccionado?.nombre}</p>
+                      </div>
                     </SpecialCardCreate>
 
                     {/* Camiones del chofer */}
@@ -1266,6 +1270,10 @@ const Overlay = styled.div`
   z-index: 2000;
   padding: 16px;
   animation: ${fadeIn} 0.2s ease-out;
+
+  @media (max-width: 600px) {
+    padding: 8px;
+  }
 `;
 
 const ModalContainer = styled.div`
@@ -1274,19 +1282,27 @@ const ModalContainer = styled.div`
   border-radius: 24px;
   width: 100%;
   max-width: 760px;
-  max-height: 92vh;
+  max-height: 90vh;
   display: flex;
   flex-direction: column;
+  min-height: 0;
   box-shadow: 0 25px 60px rgba(0, 0, 0, 0.8), 0 0 40px rgba(0, 195, 255, 0.15);
   overflow: hidden;
   position: relative;
   transition: all 0.25s ease-in-out;
+
+  @media (max-width: 600px) {
+    max-height: 94vh;
+    border-radius: 18px;
+  }
 `;
 
 const StepSection = styled.div`
   display: flex;
   flex-direction: column;
-  height: 100%;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
   animation: ${fadeInScale} 0.26s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 `;
 
@@ -1294,28 +1310,44 @@ const ModalHeader = styled.div`
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 20px 24px;
+  padding: 18px 24px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(15, 23, 42, 0.85);
+  background: rgba(15, 23, 42, 0.95);
+  flex-shrink: 0;
+
+  @media (max-width: 600px) {
+    padding: 12px 14px;
+  }
 `;
 
 const HeaderInfo = styled.div`
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 12px;
+  min-width: 0;
 
   h3 {
     margin: 0;
-    font-size: 19px;
+    font-size: 18px;
     font-weight: 700;
     color: #ffffff;
     letter-spacing: -0.3px;
+
+    @media (max-width: 600px) {
+      font-size: 15px;
+      line-height: 1.2;
+    }
   }
 
   p {
     margin: 3px 0 0 0;
-    font-size: 13px;
+    font-size: 12.5px;
     color: #94a3b8;
+
+    @media (max-width: 600px) {
+      font-size: 11px;
+      margin-top: 2px;
+    }
 
     strong {
       color: #38bdf8;
@@ -1324,16 +1356,23 @@ const HeaderInfo = styled.div`
 `;
 
 const HeaderBadge = styled.div`
-  width: 44px;
-  height: 44px;
-  border-radius: 14px;
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
   background: rgba(0, 195, 255, 0.12);
   border: 1px solid rgba(0, 195, 255, 0.3);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 22px;
+  font-size: 20px;
   flex-shrink: 0;
+
+  @media (max-width: 600px) {
+    width: 34px;
+    height: 34px;
+    border-radius: 10px;
+    font-size: 17px;
+  }
 `;
 
 const CloseBtn = styled.button`
@@ -1348,12 +1387,20 @@ const CloseBtn = styled.button`
   justify-content: center;
   font-size: 20px;
   cursor: pointer;
+  flex-shrink: 0;
   transition: all 0.2s;
 
   &:hover {
     background: rgba(239, 68, 68, 0.2);
     border-color: rgba(239, 68, 68, 0.4);
     color: #ef4444;
+  }
+
+  @media (max-width: 600px) {
+    width: 32px;
+    height: 32px;
+    font-size: 18px;
+    border-radius: 8px;
   }
 `;
 
@@ -1369,34 +1416,52 @@ const BtnBackPill = styled.button`
   display: flex;
   align-items: center;
   gap: 6px;
+  flex-shrink: 0;
   transition: all 0.2s;
 
   &:hover {
     background: rgba(0, 195, 255, 0.25);
     color: #ffffff;
   }
+
+  @media (max-width: 600px) {
+    padding: 6px 10px;
+    font-size: 11px;
+    border-radius: 8px;
+  }
 `;
 
 const ModalBody = styled.div`
-  padding: 24px;
+  padding: 22px 24px;
   overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  flex: 1;
+  min-height: 0;
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 16px;
 
   &::-webkit-scrollbar {
     width: 6px;
   }
   &::-webkit-scrollbar-thumb {
-    background: rgba(255, 255, 255, 0.15);
+    background: rgba(255, 255, 255, 0.2);
     border-radius: 4px;
+  }
+
+  @media (max-width: 600px) {
+    padding: 12px;
+    gap: 10px;
   }
 `;
 
 const Form = styled.form`
   display: flex;
   flex-direction: column;
-  height: 100%;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
 `;
 
 const FormGroup = styled.div`
@@ -1487,8 +1552,9 @@ const SearchGridInputBox = styled.div`
   background: rgba(15, 23, 42, 0.9);
   border: 1px solid rgba(0, 195, 255, 0.3);
   border-radius: 12px;
-  padding: 8px 14px;
+  padding: 10px 14px;
   gap: 10px;
+  flex-shrink: 0;
 
   .search-ico {
     color: #00c3ff;
@@ -1508,15 +1574,29 @@ const SearchGridInputBox = styled.div`
       color: #64748b;
     }
   }
+
+  @media (max-width: 600px) {
+    padding: 8px 12px;
+    border-radius: 10px;
+
+    .search-ico {
+      font-size: 18px;
+    }
+
+    input {
+      font-size: 13px;
+    }
+  }
 `;
 
 const GridSelectionContainer = styled.div`
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(215px, 1fr));
-  gap: 16px;
+  gap: 14px;
 
   @media (max-width: 600px) {
     grid-template-columns: 1fr;
+    gap: 8px;
   }
 `;
 
@@ -1535,21 +1615,25 @@ const CardSelectionItem = styled.button`
   overflow: hidden;
 
   &:hover {
-    transform: translateY(-4px);
+    transform: translateY(-3px);
     background: rgba(30, 41, 59, 0.85);
     border-color: rgba(0, 195, 255, 0.5);
-    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.5), 0 0 20px rgba(0, 195, 255, 0.25);
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.4), 0 0 20px rgba(0, 195, 255, 0.2);
 
     .card-footer span {
       color: #38bdf8;
     }
   }
 
+  &:active {
+    transform: scale(0.99);
+  }
+
   .card-top {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 12px;
+    margin-bottom: 10px;
 
     .plate-badge {
       background: rgba(0, 195, 255, 0.15);
@@ -1592,7 +1676,7 @@ const CardSelectionItem = styled.button`
     display: flex;
     flex-direction: column;
     gap: 4px;
-    margin-bottom: 14px;
+    margin-bottom: 12px;
 
     .cap-val {
       font-size: 16px;
@@ -1629,13 +1713,72 @@ const CardSelectionItem = styled.button`
 
   .card-footer {
     border-top: 1px solid rgba(255, 255, 255, 0.06);
-    padding-top: 10px;
+    padding-top: 8px;
 
     span {
       font-size: 11px;
       font-weight: 600;
       color: #64748b;
       transition: color 0.2s;
+    }
+  }
+
+  @media (max-width: 600px) {
+    padding: 10px 12px;
+    border-radius: 12px;
+
+    .card-top {
+      margin-bottom: 5px;
+
+      .plate-badge {
+        font-size: 12px;
+        padding: 3px 7px;
+      }
+
+      .truck-icon {
+        font-size: 18px;
+      }
+
+      .avatar-chip {
+        width: 30px;
+        height: 30px;
+        font-size: 16px;
+        border-radius: 8px;
+      }
+
+      .count-badge {
+        font-size: 10px;
+        padding: 2px 6px;
+      }
+    }
+
+    .card-body {
+      gap: 2px;
+      margin-bottom: 6px;
+
+      .cap-val {
+        font-size: 14px;
+      }
+
+      .model-name {
+        font-size: 11px;
+      }
+
+      .main-title {
+        font-size: 14px;
+      }
+
+      .sub-detail {
+        font-size: 11px;
+      }
+    }
+
+    .card-footer {
+      padding-top: 5px;
+
+      span {
+        font-size: 10px;
+      }
     }
   }
 `;
@@ -1652,7 +1795,7 @@ const SpecialCardCreate = styled.button`
         ? "rgba(16, 185, 129, 0.6)"
         : "rgba(139, 92, 246, 0.6)"};
   border-radius: 16px;
-  padding: 20px 16px;
+  padding: 18px 16px;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -1660,10 +1803,10 @@ const SpecialCardCreate = styled.button`
   text-align: center;
   cursor: pointer;
   transition: all 0.24s cubic-bezier(0.16, 1, 0.3, 1);
-  min-height: 150px;
+  min-height: 125px;
 
   &:hover {
-    transform: translateY(-4px);
+    transform: translateY(-3px);
     background: ${(props) =>
       props.$theme === "emerald"
         ? "rgba(6, 95, 70, 0.6)"
@@ -1671,17 +1814,21 @@ const SpecialCardCreate = styled.button`
     border-style: solid;
     border-color: ${(props) =>
       props.$theme === "emerald" ? "#10b981" : "#a855f7"};
-    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.6),
-      0 0 25px
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5),
+      0 0 20px
         ${(props) =>
           props.$theme === "emerald"
-            ? "rgba(16, 185, 129, 0.4)"
-            : "rgba(168, 85, 247, 0.4)"};
+            ? "rgba(16, 185, 129, 0.35)"
+            : "rgba(168, 85, 247, 0.35)"};
+  }
+
+  &:active {
+    transform: scale(0.99);
   }
 
   .ico-box {
-    width: 44px;
-    height: 44px;
+    width: 42px;
+    height: 42px;
     border-radius: 12px;
     background: ${(props) =>
       props.$theme === "emerald"
@@ -1692,12 +1839,19 @@ const SpecialCardCreate = styled.button`
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 24px;
-    margin-bottom: 10px;
+    font-size: 22px;
+    margin-bottom: 8px;
+    flex-shrink: 0;
+  }
+
+  .create-text-wrapper {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
   }
 
   h4 {
-    margin: 0 0 4px 0;
+    margin: 0 0 3px 0;
     font-size: 14px;
     font-weight: 700;
     color: ${(props) =>
@@ -1706,8 +1860,40 @@ const SpecialCardCreate = styled.button`
 
   p {
     margin: 0;
-    font-size: 11px;
+    font-size: 11.5px;
     color: #94a3b8;
+  }
+
+  @media (max-width: 600px) {
+    min-height: unset;
+    padding: 10px 14px;
+    border-radius: 12px;
+    flex-direction: row;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 12px;
+    text-align: left;
+
+    .ico-box {
+      width: 34px;
+      height: 34px;
+      font-size: 18px;
+      border-radius: 9px;
+      margin-bottom: 0;
+    }
+
+    .create-text-wrapper {
+      align-items: flex-start;
+    }
+
+    h4 {
+      font-size: 13px;
+      margin: 0;
+    }
+
+    p {
+      font-size: 10.5px;
+    }
   }
 `;
 
@@ -1829,6 +2015,28 @@ const InlineFormCard = styled.form`
       }
     }
   }
+
+  @media (max-width: 600px) {
+    padding: 12px;
+    border-radius: 14px;
+    gap: 10px;
+
+    .form-inputs-grid {
+      grid-template-columns: 1fr !important;
+      gap: 8px !important;
+    }
+
+    .form-actions {
+      flex-direction: column-reverse;
+      gap: 6px;
+
+      button {
+        width: 100%;
+        justify-content: center;
+        padding: 9px 12px;
+      }
+    }
+  }
 `;
 
 const PresetPillBtn = styled.button`
@@ -1923,6 +2131,40 @@ const UnitSelectedCard = styled.div`
       }
     }
   }
+
+  @media (max-width: 600px) {
+    padding: 10px 12px;
+    gap: 10px;
+    border-radius: 12px;
+
+    .unit-icon-box {
+      width: 36px;
+      height: 36px;
+      font-size: 20px;
+    }
+
+    .unit-info {
+      gap: 2px;
+
+      .unit-header-line {
+        gap: 6px;
+
+        .plate-tag {
+          font-size: 12px;
+          padding: 2px 6px;
+        }
+
+        .driver-name {
+          font-size: 12px;
+        }
+      }
+
+      .unit-meta-line {
+        gap: 8px;
+        font-size: 11px;
+      }
+    }
+  }
 `;
 
 const BtnChangeUnit = styled.button`
@@ -1944,6 +2186,11 @@ const BtnChangeUnit = styled.button`
     background: rgba(0, 195, 255, 0.15);
     border-color: rgba(0, 195, 255, 0.4);
     color: #38bdf8;
+  }
+
+  @media (max-width: 600px) {
+    padding: 5px 9px;
+    font-size: 11px;
   }
 `;
 
@@ -2214,6 +2461,12 @@ const ModalFooter = styled.div`
   padding: 16px 24px;
   border-top: 1px solid rgba(255, 255, 255, 0.08);
   background: rgba(15, 23, 42, 0.85);
+  flex-shrink: 0;
+
+  @media (max-width: 600px) {
+    padding: 10px 14px;
+    gap: 8px;
+  }
 `;
 
 const CancelButton = styled.button`
@@ -2235,6 +2488,12 @@ const CancelButton = styled.button`
   &:disabled {
     opacity: 0.5;
     cursor: not-allowed;
+  }
+
+  @media (max-width: 600px) {
+    padding: 10px 14px;
+    font-size: 13px;
+    border-radius: 10px;
   }
 `;
 
@@ -2259,6 +2518,13 @@ const SubmitButton = styled.button`
       props.$variant === "paid"
         ? "rgba(16, 185, 129, 0.4)"
         : "rgba(234, 179, 8, 0.4)"};
+
+  @media (max-width: 600px) {
+    padding: 10px 14px;
+    font-size: 13px;
+    border-radius: 10px;
+    justify-content: center;
+  }
 
   &:hover:not(:disabled) {
     transform: translateY(-2px);
