@@ -284,12 +284,20 @@ export function FormularioUsuario({ onUsuarioRegistrado }) {
               console.warn("Fallo al actualizar perfil_id en camioneros:", errCamioneroLink);
             }
 
-            // Actualizar todos los camiones existentes de este chofer para sincronizar perfil_id
+            // Actualizar todos los camiones existentes de este chofer para sincronizar perfil_id y camionero_id
             try {
               await supabase
                 .from("camiones")
-                .update({ perfil_id: userId })
+                .update({ perfil_id: userId, camionero_id: camioneroSeleccionadoId })
                 .eq("camionero_id", camioneroSeleccionadoId);
+
+              const choferObj = listaCamioneros.find((c) => String(c.id) === String(camioneroSeleccionadoId));
+              if (choferObj?.nombre) {
+                await supabase
+                  .from("camiones")
+                  .update({ perfil_id: userId, camionero_id: camioneroSeleccionadoId })
+                  .ilike("chofer", choferObj.nombre.trim());
+              }
             } catch (errCamionesLink) {
               console.warn("Fallo al actualizar camiones con perfil_id:", errCamionesLink);
             }

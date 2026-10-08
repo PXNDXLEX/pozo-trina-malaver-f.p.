@@ -97,10 +97,13 @@ export function TablaCamiones() {
     setModalCapacidad(camion.capacidad || "");
     setModalModelo(camion.modelo || "");
 
-    // Buscar si ya tiene camionero_id o si coincide por nombre
+    // Buscar si ya tiene camionero_id, perfil_id o si coincide por nombre
     let chId = "";
     if (camion.camionero_id) {
       chId = String(camion.camionero_id);
+    } else if (camion.perfil_id) {
+      const match = listaCamioneros.find((c) => c.perfil_id === camion.perfil_id);
+      if (match) chId = String(match.id);
     } else if (camion.chofer) {
       const match = listaCamioneros.find(
         (c) => c.nombre?.trim().toLowerCase() === camion.chofer?.trim().toLowerCase()
@@ -265,6 +268,10 @@ export function TablaCamiones() {
   const getChoferInfo = (camion) => {
     if (camion.camionero_id) {
       const match = listaCamioneros.find((c) => c.id === camion.camionero_id);
+      if (match) return match;
+    }
+    if (camion.perfil_id) {
+      const match = listaCamioneros.find((c) => c.perfil_id === camion.perfil_id);
       if (match) return match;
     }
     if (camion.chofer) {
@@ -674,9 +681,12 @@ export function TablaCamiones() {
                         >
                           <option value="">-- ⚠️ Sin Chofer Asignado (Unidad Libre) --</option>
                           {listaCamioneros.map((ch) => {
-                            const cantCamiones = datos.filter(
-                              (t) => t.camionero_id === ch.id || (!t.camionero_id && t.chofer?.toLowerCase() === ch.nombre?.toLowerCase())
-                            ).length;
+                            const cantCamiones = datos.filter((t) => {
+                              const matchCamId = t.camionero_id === ch.id;
+                              const matchPerfil = ch.perfil_id && t.perfil_id === ch.perfil_id;
+                              const matchNombre = ch.nombre && t.chofer && t.chofer.trim().toLowerCase() === ch.nombre.trim().toLowerCase();
+                              return matchCamId || matchPerfil || matchNombre;
+                            }).length;
 
                             return (
                               <option key={ch.id} value={ch.id}>

@@ -62,9 +62,8 @@ export function CuentasPorCobrar() {
         .order("fecha_carga", { ascending: false });
 
       if (user?.role === "camionero" && user?.id) {
-        // Obtener todos los camiones asignados a este chofer (priorizando tabla camioneros)
-        let idsAsignados = [];
-        let camioneroEncontrado = false;
+        // Obtener todos los camiones asignados a este chofer combinando camionero_id, perfil_id y nombre
+        const idsSet = new Set();
 
         try {
           const { data: cRow } = await supabase
@@ -73,43 +72,39 @@ export function CuentasPorCobrar() {
             .eq("perfil_id", user.id)
             .maybeSingle();
 
+          // 1. Por camionero_id
           if (cRow?.id) {
-            camioneroEncontrado = true;
             const { data: camionesDeCamionero } = await supabase
               .from("camiones")
               .select("id")
               .eq("camionero_id", cRow.id);
 
-            if (camionesDeCamionero && camionesDeCamionero.length > 0) {
-              idsAsignados.push(...camionesDeCamionero.map((c) => c.id));
-            } else if (cRow.nombre) {
-              const { data: byNombre } = await supabase
-                .from("camiones")
-                .select("id")
-                .ilike("chofer", cRow.nombre.trim());
-              if (byNombre) {
-                idsAsignados.push(...byNombre.map((c) => c.id));
-              }
-            }
+            (camionesDeCamionero || []).forEach((c) => idsSet.add(c.id));
           }
-        } catch (e) {
-          // fallback si la tabla camioneros no existe aún
-        }
 
-        // Solo si no se encontró registro en camioneros, fallback por perfil_id directo
-        if (!camioneroEncontrado) {
+          // 2. Por perfil_id directo
           const { data: misCamiones } = await supabase
             .from("camiones")
             .select("id")
-            .eq("perfil_id", user.id)
-            .is("camionero_id", null);
+            .eq("perfil_id", user.id);
 
-          if (misCamiones) {
-            idsAsignados.push(...misCamiones.map((c) => c.id));
+          (misCamiones || []).forEach((c) => idsSet.add(c.id));
+
+          // 3. Por nombre de chofer o usuario
+          const nombreChofer = cRow?.nombre || user?.nombre;
+          if (nombreChofer) {
+            const { data: byNombre } = await supabase
+              .from("camiones")
+              .select("id")
+              .ilike("chofer", nombreChofer.trim());
+
+            (byNombre || []).forEach((c) => idsSet.add(c.id));
           }
+        } catch (e) {
+          console.error("Error al obtener camiones de cobranza:", e);
         }
 
-        idsAsignados = [...new Set(idsAsignados)];
+        let idsAsignados = Array.from(idsSet);
 
         if (idsAsignados.length === 0) {
           // Si el chofer no tiene ningún camión asignado, no debe ver deudas de ningún otro camión

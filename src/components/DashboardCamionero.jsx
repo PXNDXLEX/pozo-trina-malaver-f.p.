@@ -36,58 +36,50 @@ export function DashboardCamionero() {
   const cargarDatosCamionero = async () => {
     setLoading(true);
     try {
-      let trucks = [];
+      const trucksMap = new Map();
 
       if (user?.id) {
-        // 1. Prioridad: Buscar la ficha del chofer en la tabla camioneros
-        let camioneroEncontrado = null;
         try {
+          // 1. Buscar la ficha del chofer en la tabla camioneros
           const { data: camioneroRow } = await supabase
             .from("camioneros")
             .select("id, nombre")
             .eq("perfil_id", user.id)
             .maybeSingle();
 
+          // 2. Camiones por camionero_id
           if (camioneroRow?.id) {
-            camioneroEncontrado = camioneroRow;
-
-            // Obtener camiones asignados específicamente a este camionero_id
             const { data: byCamioneroId } = await supabase
               .from("camiones")
               .select("id, placa, chofer, capacidad, modelo, perfil_id, camionero_id")
               .eq("camionero_id", camioneroRow.id);
 
-            if (byCamioneroId && byCamioneroId.length > 0) {
-              trucks = byCamioneroId;
-            } else if (camioneroRow.nombre) {
-              // Si aún no tienen camionero_id en camiones, enlazar por nombre exacto del chofer
-              const { data: byNombre } = await supabase
-                .from("camiones")
-                .select("id, placa, chofer, capacidad, modelo, perfil_id, camionero_id")
-                .ilike("chofer", camioneroRow.nombre.trim());
-
-              if (byNombre) trucks = byNombre;
-            }
+            (byCamioneroId || []).forEach((t) => trucksMap.set(t.id, t));
           }
-        } catch (errCamioneros) {
-          // ignore si la tabla no existe
-        }
 
-        // 2. Si no se encontró en camioneros, fallback a camiones por perfil_id pero SOLO si camionero_id es null
-        if (!camioneroEncontrado && trucks.length === 0) {
+          // 3. Camiones por perfil_id directo
           const { data: byPerfil } = await supabase
             .from("camiones")
             .select("id, placa, chofer, capacidad, modelo, perfil_id, camionero_id")
-            .eq("perfil_id", user.id)
-            .is("camionero_id", null);
+            .eq("perfil_id", user.id);
 
-          if (byPerfil) trucks = byPerfil;
+          (byPerfil || []).forEach((t) => trucksMap.set(t.id, t));
+
+          // 4. Camiones por coincidencia de nombre de chofer o usuario
+          const nombreChofer = camioneroRow?.nombre || user?.nombre;
+          if (nombreChofer) {
+            const { data: byNombre } = await supabase
+              .from("camiones")
+              .select("id, placa, chofer, capacidad, modelo, perfil_id, camionero_id")
+              .ilike("chofer", nombreChofer.trim());
+
+            (byNombre || []).forEach((t) => trucksMap.set(t.id, t));
+          }
+        } catch (errCamioneros) {
+          console.error("Error al cargar camiones en dashboard:", errCamioneros);
         }
       }
 
-      // Deduplicar unidades por id
-      const trucksMap = new Map();
-      trucks.forEach((t) => trucksMap.set(t.id, t));
       const listaFinal = Array.from(trucksMap.values());
       setMisCamiones(listaFinal);
 

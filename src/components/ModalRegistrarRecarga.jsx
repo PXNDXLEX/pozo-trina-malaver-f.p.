@@ -65,51 +65,48 @@ export function ModalRegistrarRecarga({ isOpen, onClose, onRecargaExitosa }) {
     try {
       // Si el usuario es camionero, filtrar estrictamente sus camiones asignados (1 o varios)
       if (user?.role === "camionero" && user?.id) {
-        let trucks = [];
-        let camioneroEncontrado = null;
+        const trucksMap = new Map();
 
         try {
+          // 1. Buscar la ficha en camioneros enlazada a este usuario
           const { data: cRow } = await supabase
             .from("camioneros")
             .select("id, nombre")
             .eq("perfil_id", user.id)
             .maybeSingle();
 
+          // 2. Camiones por camionero_id
           if (cRow?.id) {
-            camioneroEncontrado = cRow;
             const { data: trucksCam } = await supabase
               .from("camiones")
               .select("id, placa, chofer, capacidad, modelo, perfil_id, camionero_id")
               .eq("camionero_id", cRow.id);
 
-            if (trucksCam && trucksCam.length > 0) {
-              trucks = trucksCam;
-            } else if (cRow.nombre) {
-              const { data: byNombre } = await supabase
-                .from("camiones")
-                .select("id, placa, chofer, capacidad, modelo, perfil_id, camionero_id")
-                .ilike("chofer", cRow.nombre.trim());
-              if (byNombre) trucks = byNombre;
-            }
+            (trucksCam || []).forEach((t) => trucksMap.set(t.id, t));
           }
-        } catch (errCam) {
-          // ignore if table doesn't exist
-        }
 
-        // Fallback solo si no se encontró en camioneros
-        if (!camioneroEncontrado && trucks.length === 0) {
+          // 3. Camiones por perfil_id directo
           const { data: misCamiones } = await supabase
             .from("camiones")
             .select("id, placa, chofer, capacidad, modelo, perfil_id, camionero_id")
-            .eq("perfil_id", user.id)
-            .is("camionero_id", null);
+            .eq("perfil_id", user.id);
 
-          if (misCamiones) trucks = misCamiones;
+          (misCamiones || []).forEach((t) => trucksMap.set(t.id, t));
+
+          // 4. Camiones por coincidencia de nombre de chofer o usuario
+          const nombreChofer = cRow?.nombre || user?.nombre;
+          if (nombreChofer) {
+            const { data: byNombre } = await supabase
+              .from("camiones")
+              .select("id, placa, chofer, capacidad, modelo, perfil_id, camionero_id")
+              .ilike("chofer", nombreChofer.trim());
+
+            (byNombre || []).forEach((t) => trucksMap.set(t.id, t));
+          }
+        } catch (errCam) {
+          console.error("Error al cargar camiones en modal de recarga:", errCam);
         }
 
-        // Deduplicar unidades por id
-        const trucksMap = new Map();
-        trucks.forEach((t) => trucksMap.set(t.id, t));
         const finalTrucks = Array.from(trucksMap.values());
 
         if (finalTrucks && finalTrucks.length > 0) {

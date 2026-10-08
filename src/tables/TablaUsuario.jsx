@@ -220,14 +220,52 @@ export function TablaUsuario() {
       setFichaCamioneroInfo(foundCamionero || null);
       if (telefonoEncontrado) setModalTelefono(telefonoEncontrado);
 
+      // Auto-sincronización en segundo plano de camiones huérfanos con el mismo nombre de chofer o perfil_id
+      if (foundCamioneroId) {
+        try {
+          if (foundCamionero?.nombre) {
+            await supabase
+              .from("camiones")
+              .update({ camionero_id: foundCamioneroId, perfil_id: usr.id })
+              .ilike("chofer", foundCamionero.nombre.trim())
+              .is("camionero_id", null);
+          }
+          if (usr?.nombre && usr.nombre.trim().toLowerCase() !== foundCamionero?.nombre?.trim().toLowerCase()) {
+            await supabase
+              .from("camiones")
+              .update({ camionero_id: foundCamioneroId, perfil_id: usr.id })
+              .ilike("chofer", usr.nombre.trim())
+              .is("camionero_id", null);
+          }
+          if (usr?.id) {
+            await supabase
+              .from("camiones")
+              .update({ camionero_id: foundCamioneroId })
+              .eq("perfil_id", usr.id)
+              .is("camionero_id", null);
+
+            await supabase
+              .from("camiones")
+              .update({ perfil_id: usr.id })
+              .eq("camionero_id", foundCamioneroId)
+              .is("perfil_id", null);
+          }
+        } catch (eSync) {
+          console.warn("Auto-sync camiones:", eSync);
+        }
+      }
+
       // 3. Filtrar Choferes Disponibles:
       // REGLA: Si este camionero ya está asignado a un usuario (perfil_id no nulo y distinto a usr.id), NO DEBE APARECER EN LA LISTA
       const listaDisponibles = (todosChoferes || [])
         .filter((c) => !c.perfil_id || c.perfil_id === usr.id)
         .map((c) => {
-          const count = (todosCamiones || []).filter(
-            (t) => t.camionero_id === c.id || (!t.camionero_id && t.chofer && t.chofer.trim().toLowerCase() === c.nombre?.trim().toLowerCase())
-          ).length;
+          const count = (todosCamiones || []).filter((t) => {
+            const matchCamId = t.camionero_id === c.id;
+            const matchPerfil = c.perfil_id && t.perfil_id === c.perfil_id;
+            const matchNombre = c.nombre && t.chofer && t.chofer.trim().toLowerCase() === c.nombre.trim().toLowerCase();
+            return matchCamId || matchPerfil || matchNombre;
+          }).length;
           return {
             ...c,
             camionesCount: count,
@@ -236,36 +274,33 @@ export function TablaUsuario() {
 
       setChoferesDisponibles(listaDisponibles);
 
-      // 4. Cargar camiones actualmente asignados a este chofer
-      let assignedTrucks = [];
-      if (foundCamioneroId) {
-        assignedTrucks = (todosCamiones || []).filter((t) => t.camionero_id === foundCamioneroId);
-        if (assignedTrucks.length === 0 && foundCamionero?.nombre) {
-          assignedTrucks = (todosCamiones || []).filter(
-            (t) => t.chofer && t.chofer.trim().toLowerCase() === foundCamionero.nombre.trim().toLowerCase()
-          );
-        }
-      }
+      // 4. Cargar TODOS los camiones que pertenezcan a este chofer o usuario
+      // (Combinar: por camionero_id, por perfil_id, y por coincidencia de nombre)
+      const trucksMap = new Map();
 
-      // Si no encontró por camionero_id, buscar por nombre exacto del chofer o perfil_id aislado
-      if (assignedTrucks.length === 0 && usr.nombre) {
-        assignedTrucks = (todosCamiones || []).filter(
-          (t) => t.chofer && t.chofer.trim().toLowerCase() === usr.nombre.trim().toLowerCase()
-        );
-        if (assignedTrucks.length === 0) {
-          assignedTrucks = (todosCamiones || []).filter(
-            (t) => t.perfil_id === usr.id && !t.camionero_id
-          );
-        }
-      }
+      (todosCamiones || []).forEach((t) => {
+        const matchesCamioneroId = foundCamioneroId && t.camionero_id === foundCamioneroId;
+        const matchesPerfilId = usr?.id && t.perfil_id === usr.id;
+        const matchesNombreChofer = foundCamionero?.nombre && t.chofer && t.chofer.trim().toLowerCase() === foundCamionero.nombre.trim().toLowerCase();
+        const matchesNombreUsuario = usr?.nombre && t.chofer && t.chofer.trim().toLowerCase() === usr.nombre.trim().toLowerCase();
 
-      setCamionesAsignados(assignedTrucks || []);
+        if (matchesCamioneroId || matchesPerfilId || matchesNombreChofer || matchesNombreUsuario) {
+          trucksMap.set(t.id, t);
+        }
+      });
+
+      const assignedTrucks = Array.from(trucksMap.values());
+      setCamionesAsignados(assignedTrucks);
 
       // 5. Cargar camiones disponibles sin chofer para ofrecer vinculación rápida individual
-      const assignedIds = new Set((assignedTrucks || []).map((t) => t.id));
-      const disponibles = (todosCamiones || []).filter(
-        (t) => !assignedIds.has(t.id) && !t.camionero_id && (!t.chofer || t.chofer.trim() === "" || t.chofer.toLowerCase().includes("sin"))
-      );
+      const assignedIds = new Set(assignedTrucks.map((t) => t.id));
+      const disponibles = (todosCamiones || []).filter((t) => {
+        if (assignedIds.has(t.id)) return false;
+        if (t.camionero_id) return false;
+        if (t.perfil_id) return false;
+        const choferStr = (t.chofer || "").trim().toLowerCase();
+        return !choferStr || choferStr === "sin asignar" || choferStr.includes("sin");
+      });
 
       setCamionesDisponibles(disponibles);
       if (disponibles.length > 0) {
@@ -292,26 +327,41 @@ export function TablaUsuario() {
     if (ch.cedula) setModalCedula(ch.cedula);
     if (ch.telefono) setModalTelefono(ch.telefono || "");
 
-    // Cargar todos los camiones vinculados a este chofer
+    // Cargar todos los camiones vinculados a este chofer (combinando ID, perfil_id y nombre)
     try {
-      let { data: trucks } = await supabase
+      const trucksMap = new Map();
+
+      // Por camionero_id
+      const { data: byCamId } = await supabase
         .from("camiones")
         .select("id, placa, capacidad, modelo, chofer, camionero_id, perfil_id")
         .eq("camionero_id", ch.id);
+      (byCamId || []).forEach((t) => trucksMap.set(t.id, t));
 
-      if ((!trucks || trucks.length === 0) && ch.nombre) {
-        const { data: trucksNombre } = await supabase
+      // Por perfil_id si el chofer ya tenía cuenta de usuario
+      if (ch.perfil_id) {
+        const { data: byPerfil } = await supabase
+          .from("camiones")
+          .select("id, placa, capacidad, modelo, chofer, camionero_id, perfil_id")
+          .eq("perfil_id", ch.perfil_id);
+        (byPerfil || []).forEach((t) => trucksMap.set(t.id, t));
+      }
+
+      // Por coincidencia de nombre de chofer
+      if (ch.nombre) {
+        const { data: byNombre } = await supabase
           .from("camiones")
           .select("id, placa, capacidad, modelo, chofer, camionero_id, perfil_id")
           .ilike("chofer", ch.nombre.trim());
-        if (trucksNombre) trucks = trucksNombre;
+        (byNombre || []).forEach((t) => trucksMap.set(t.id, t));
       }
 
-      setCamionesAsignados(trucks || []);
+      const allTrucks = Array.from(trucksMap.values());
+      setCamionesAsignados(allTrucks);
       setCamionesNuevos([]);
       setCamionesDesvinculados([]);
       setChoferSeleccionadoParaVincular("");
-      alert(`🎉 Ficha de chofer "${ch.nombre}" seleccionada. Se cargaron ${trucks?.length || 0} camión(es) pertenecientes a este chofer.`);
+      alert(`🎉 Ficha de chofer "${ch.nombre}" seleccionada. Se cargaron ${allTrucks.length} camión(es) pertenecientes a este chofer.`);
     } catch (err) {
       console.error("Error al cargar camiones del chofer:", err);
     }
@@ -520,7 +570,7 @@ export function TablaUsuario() {
       if (camionesDesvinculados.length > 0) {
         await supabase
           .from("camiones")
-          .update({ camionero_id: null, perfil_id: null })
+          .update({ camionero_id: null, perfil_id: null, chofer: "Sin Asignar" })
           .in("id", camionesDesvinculados);
       }
 
