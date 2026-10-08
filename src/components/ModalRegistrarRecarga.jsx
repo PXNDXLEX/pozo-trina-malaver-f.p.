@@ -1595,8 +1595,8 @@ const GridSelectionContainer = styled.div`
   gap: 14px;
 
   @media (max-width: 600px) {
-    grid-template-columns: 1fr;
-    gap: 8px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
   }
 `;
 
@@ -1613,6 +1613,7 @@ const CardSelectionItem = styled.button`
   transition: all 0.24s cubic-bezier(0.16, 1, 0.3, 1);
   position: relative;
   overflow: hidden;
+  min-height: 130px;
 
   &:hover {
     transform: translateY(-3px);
@@ -1626,7 +1627,9 @@ const CardSelectionItem = styled.button`
   }
 
   &:active {
-    transform: scale(0.99);
+    transform: scale(0.97);
+    background: rgba(30, 41, 59, 0.95);
+    border-color: #00c3ff;
   }
 
   .card-top {
@@ -1634,6 +1637,7 @@ const CardSelectionItem = styled.button`
     justify-content: space-between;
     align-items: center;
     margin-bottom: 10px;
+    width: 100%;
 
     .plate-badge {
       background: rgba(0, 195, 255, 0.15);
@@ -1644,10 +1648,15 @@ const CardSelectionItem = styled.button`
       letter-spacing: 0.8px;
       padding: 4px 10px;
       border-radius: 8px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 120px;
     }
 
     .truck-icon {
       font-size: 20px;
+      flex-shrink: 0;
     }
 
     .avatar-chip {
@@ -1661,6 +1670,7 @@ const CardSelectionItem = styled.button`
       align-items: center;
       justify-content: center;
       font-size: 18px;
+      flex-shrink: 0;
     }
 
     .count-badge {
@@ -1669,6 +1679,8 @@ const CardSelectionItem = styled.button`
       background: rgba(255, 255, 255, 0.05);
       padding: 3px 8px;
       border-radius: 6px;
+      white-space: nowrap;
+      flex-shrink: 0;
     }
   }
 
@@ -1677,6 +1689,8 @@ const CardSelectionItem = styled.button`
     flex-direction: column;
     gap: 4px;
     margin-bottom: 12px;
+    width: 100%;
+    min-width: 0;
 
     .cap-val {
       font-size: 16px;
@@ -1685,6 +1699,7 @@ const CardSelectionItem = styled.button`
       display: flex;
       align-items: center;
       gap: 5px;
+      white-space: nowrap;
 
       svg {
         color: #00c3ff;
@@ -1697,58 +1712,75 @@ const CardSelectionItem = styled.button`
       display: flex;
       align-items: center;
       gap: 5px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
 
     .main-title {
       font-size: 15px;
       font-weight: 700;
       color: #ffffff;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
 
     .sub-detail {
       font-size: 12px;
       color: #94a3b8;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
   }
 
   .card-footer {
     border-top: 1px solid rgba(255, 255, 255, 0.06);
     padding-top: 8px;
+    width: 100%;
 
     span {
       font-size: 11px;
       font-weight: 600;
       color: #64748b;
       transition: color 0.2s;
+      display: block;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
   }
 
   @media (max-width: 600px) {
-    padding: 10px 12px;
-    border-radius: 12px;
+    padding: 11px 9px;
+    border-radius: 14px;
+    min-height: 122px;
 
     .card-top {
-      margin-bottom: 5px;
+      margin-bottom: 6px;
 
       .plate-badge {
-        font-size: 12px;
-        padding: 3px 7px;
+        font-size: 11px;
+        padding: 2px 6px;
+        max-width: 85px;
+        letter-spacing: 0.3px;
       }
 
       .truck-icon {
-        font-size: 18px;
+        font-size: 16px;
       }
 
       .avatar-chip {
-        width: 30px;
-        height: 30px;
-        font-size: 16px;
-        border-radius: 8px;
+        width: 28px;
+        height: 28px;
+        font-size: 15px;
+        border-radius: 7px;
       }
 
       .count-badge {
-        font-size: 10px;
-        padding: 2px 6px;
+        font-size: 9.5px;
+        padding: 2px 5px;
       }
     }
 
@@ -1757,19 +1789,29 @@ const CardSelectionItem = styled.button`
       margin-bottom: 6px;
 
       .cap-val {
-        font-size: 14px;
+        font-size: 13.5px;
+        gap: 3px;
+        svg {
+          font-size: 14px;
+        }
       }
 
       .model-name {
-        font-size: 11px;
+        font-size: 10.5px;
+        gap: 3px;
+        svg {
+          font-size: 12px;
+        }
       }
 
       .main-title {
-        font-size: 14px;
+        font-size: 13px;
+        line-height: 1.25;
       }
 
       .sub-detail {
-        font-size: 11px;
+        font-size: 10px;
+        line-height: 1.2;
       }
     }
 
@@ -1778,6 +1820,7 @@ const CardSelectionItem = styled.button`
 
       span {
         font-size: 10px;
+        color: #38bdf8;
       }
     }
   }
@@ -1803,7 +1846,7 @@ const SpecialCardCreate = styled.button`
   text-align: center;
   cursor: pointer;
   transition: all 0.24s cubic-bezier(0.16, 1, 0.3, 1);
-  min-height: 125px;
+  min-height: 130px;
 
   &:hover {
     transform: translateY(-3px);
@@ -1823,7 +1866,7 @@ const SpecialCardCreate = styled.button`
   }
 
   &:active {
-    transform: scale(0.99);
+    transform: scale(0.97);
   }
 
   .ico-box {
@@ -1848,6 +1891,7 @@ const SpecialCardCreate = styled.button`
     display: flex;
     flex-direction: column;
     align-items: center;
+    text-align: center;
   }
 
   h4 {
@@ -1865,34 +1909,39 @@ const SpecialCardCreate = styled.button`
   }
 
   @media (max-width: 600px) {
-    min-height: unset;
-    padding: 10px 14px;
-    border-radius: 12px;
-    flex-direction: row;
+    min-height: 122px;
+    padding: 11px 8px;
+    border-radius: 14px;
+    flex-direction: column;
     align-items: center;
-    justify-content: flex-start;
-    gap: 12px;
-    text-align: left;
+    justify-content: center;
+    text-align: center;
+    gap: 4px;
 
     .ico-box {
-      width: 34px;
-      height: 34px;
+      width: 32px;
+      height: 32px;
       font-size: 18px;
-      border-radius: 9px;
-      margin-bottom: 0;
+      border-radius: 8px;
+      margin-bottom: 4px;
     }
 
     .create-text-wrapper {
-      align-items: flex-start;
+      align-items: center;
+      text-align: center;
     }
 
     h4 {
-      font-size: 13px;
+      font-size: 12px;
       margin: 0;
+      line-height: 1.25;
+      font-weight: 700;
     }
 
     p {
-      font-size: 10.5px;
+      font-size: 9.5px;
+      margin-top: 2px;
+      line-height: 1.2;
     }
   }
 `;
