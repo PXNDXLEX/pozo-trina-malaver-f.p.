@@ -202,13 +202,51 @@ export function TablaUsuario() {
       }
 
       // 2. Buscar si este usuario ya tiene una ficha en camioneros enlazada
+      // Detectar y fusionar automáticamente duplicados si existen múltiples fichas para el mismo chofer
+      const matchesChofer = (todosChoferes || []).filter((c) => {
+        const matchPerfil = c.perfil_id === usr.id;
+        const matchCedula = usr.cedula && c.cedula && c.cedula.trim() === usr.cedula.trim();
+        const matchNombre = usr.nombre && c.nombre && c.nombre.trim().toLowerCase() === usr.nombre.trim().toLowerCase();
+        return matchPerfil || matchCedula || matchNombre;
+      });
+
       let foundCamionero = null;
-      if (todosChoferes.length > 0) {
-        foundCamionero = todosChoferes.find((c) => c.perfil_id === usr.id);
-        if (!foundCamionero && usr.nombre) {
-          foundCamionero = todosChoferes.find(
-            (c) => (!c.perfil_id || c.perfil_id === usr.id) && c.nombre.trim().toLowerCase() === usr.nombre.trim().toLowerCase()
-          );
+      if (matchesChofer.length > 0) {
+        // La ficha principal es la que ya tiene perfil_id === usr.id, o la primera encontrada
+        foundCamionero = matchesChofer.find((c) => c.perfil_id === usr.id) || matchesChofer[0];
+
+        // Si hay registros duplicados en camioneros con IDs diferentes, unificarlos
+        const duplicates = matchesChofer.filter((c) => c.id !== foundCamionero.id);
+        if (duplicates.length > 0) {
+          const dupIds = duplicates.map((d) => d.id);
+          try {
+            // Reasignar todos los camiones de los duplicados a la ficha principal
+            await supabase
+              .from("camiones")
+              .update({ camionero_id: foundCamionero.id, perfil_id: usr.id, chofer: foundCamionero.nombre })
+              .in("camionero_id", dupIds);
+
+            // Eliminar las fichas duplicadas redundantes de camioneros
+            await supabase
+              .from("camioneros")
+              .delete()
+              .in("id", dupIds);
+          } catch (eMerge) {
+            console.warn("Fusión de choferes duplicados:", eMerge);
+          }
+        }
+      }
+
+      // Asegurar que la ficha principal tenga perfil_id = usr.id
+      if (foundCamionero && (!foundCamionero.perfil_id || foundCamionero.perfil_id !== usr.id)) {
+        try {
+          await supabase
+            .from("camioneros")
+            .update({ perfil_id: usr.id })
+            .eq("id", foundCamionero.id);
+          foundCamionero.perfil_id = usr.id;
+        } catch (eLink) {
+          console.warn("Link perfil a camionero:", eLink);
         }
       }
 
@@ -220,7 +258,7 @@ export function TablaUsuario() {
       setFichaCamioneroInfo(foundCamionero || null);
       if (telefonoEncontrado) setModalTelefono(telefonoEncontrado);
 
-      // Auto-limpieza en segundo plano de inconsistencias: camiones "Sin Asignar" con camionero_id residual
+      // Auto-limpieza de seguridad: camiones "Sin Asignar" deben tener sus claves foráneas en null
       try {
         await supabase
           .from("camiones")
@@ -231,7 +269,20 @@ export function TablaUsuario() {
         console.warn("Auto-clean en camiones:", eClean);
       }
 
-      // Auto-sincronización en segundo plano de camiones legítimos con el mismo nombre del chofer
+      // Auto-saneamiento: si un camión pertenece a OTRO chofer pero tenía este perfil_id por error, resetear su perfil_id
+      if (foundCamioneroId) {
+        try {
+          await supabase
+            .from("camiones")
+            .update({ perfil_id: null })
+            .eq("perfil_id", usr.id)
+            .neq("camionero_id", foundCamioneroId);
+        } catch (eAlign) {
+          console.warn("Desvincular camiones ajenos con perfil_id residual:", eAlign);
+        }
+      }
+
+      // Auto-sincronización de camiones legítimos con el nombre del chofer
       if (foundCamioneroId && foundCamionero?.nombre) {
         try {
           const nombreValido = foundCamionero.nombre.trim();

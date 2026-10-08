@@ -70,6 +70,27 @@ export function TablaCamiones() {
       ]);
 
       if (!resCamiones.error && resCamiones.data) {
+        // Auto-sincronización: asegurar que cada camión con chofer tenga el perfil_id y chofer de su chofer asignado
+        const choferesMap = new Map((resCamioneros.data || []).map((c) => [String(c.id), c]));
+        for (const cam of resCamiones.data) {
+          if (cam.camionero_id) {
+            const ch = choferesMap.get(String(cam.camionero_id));
+            if (ch) {
+              const expectedPerfil = ch.perfil_id || null;
+              const expectedChofer = ch.nombre || "Sin Asignar";
+              if (cam.perfil_id !== expectedPerfil || cam.chofer !== expectedChofer) {
+                cam.perfil_id = expectedPerfil;
+                cam.chofer = expectedChofer;
+                supabase
+                  .from("camiones")
+                  .update({ perfil_id: expectedPerfil, chofer: expectedChofer })
+                  .eq("id", cam.id)
+                  .then(() => {})
+                  .catch((eAlign) => console.warn("Error al alinear camión:", eAlign));
+              }
+            }
+          }
+        }
         setDatos(resCamiones.data);
       }
       if (!resCamioneros.error && resCamioneros.data) {

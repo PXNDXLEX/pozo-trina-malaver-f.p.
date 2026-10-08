@@ -320,27 +320,66 @@ export function FormularioUsuario({ onUsuarioRegistrado }) {
               }
             }
           } else {
-            // Modo nuevo chofer desde cero
-            // A. Insertar en tabla camioneros
+            // Modo nuevo chofer o creación directa
             try {
-              const { data: newCamionero, error: errNewCam } = await supabase
-                .from("camioneros")
-                .insert([
-                  {
+              // 1. Verificar si ya existía una ficha en camioneros con esa cédula o nombre para NO duplicarla
+              let choferExistente = null;
+              if (cedula.trim()) {
+                const { data: porCedula } = await supabase
+                  .from("camioneros")
+                  .select("id, nombre")
+                  .eq("cedula", cedula.trim())
+                  .maybeSingle();
+                if (porCedula) choferExistente = porCedula;
+              }
+              if (!choferExistente && nombre.trim()) {
+                const { data: porNombre } = await supabase
+                  .from("camioneros")
+                  .select("id, nombre")
+                  .ilike("nombre", nombre.trim())
+                  .maybeSingle();
+                if (porNombre) choferExistente = porNombre;
+              }
+
+              if (choferExistente) {
+                // Actualizar la ficha existente para vincularla a este nuevo usuario de login
+                camioneroIdFinal = choferExistente.id;
+                await supabase
+                  .from("camioneros")
+                  .update({
                     nombre: nombre.trim(),
                     cedula: cedula.trim(),
                     telefono: telefonoChofer.trim() || null,
                     perfil_id: userId,
-                  },
-                ])
-                .select("id")
-                .single();
+                  })
+                  .eq("id", choferExistente.id);
 
-              if (!errNewCam && newCamionero) {
-                camioneroIdFinal = newCamionero.id;
+                // Enlazar camiones que ya tuviera este chofer con el nuevo perfil_id
+                await supabase
+                  .from("camiones")
+                  .update({ perfil_id: userId, camionero_id: choferExistente.id, chofer: nombre.trim() })
+                  .eq("camionero_id", choferExistente.id);
+              } else {
+                // Insertar nueva ficha en camioneros
+                const { data: newCamionero, error: errNewCam } = await supabase
+                  .from("camioneros")
+                  .insert([
+                    {
+                      nombre: nombre.trim(),
+                      cedula: cedula.trim(),
+                      telefono: telefonoChofer.trim() || null,
+                      perfil_id: userId,
+                    },
+                  ])
+                  .select("id")
+                  .single();
+
+                if (!errNewCam && newCamionero) {
+                  camioneroIdFinal = newCamionero.id;
+                }
               }
             } catch (errInsertCamionero) {
-              console.warn("Fallo al insertar en camioneros:", errInsertCamionero);
+              console.warn("Fallo al insertar/actualizar en camioneros:", errInsertCamionero);
             }
 
             // B. Insertar cada camión registrado en la lista
