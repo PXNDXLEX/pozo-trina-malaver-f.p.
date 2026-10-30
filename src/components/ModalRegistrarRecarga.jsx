@@ -322,11 +322,11 @@ export function ModalRegistrarRecarga({ isOpen, onClose, onRecargaExitosa }) {
       }
     }
 
-    const regexTelefonoVE = /^(0414|0424|0412|0416|0426|02\d{2})\d{7}$/;
+    const regexTelefonoVE = /^(0414|0424|0412|0422|0416|0426|02\d{2})\d{7}$/;
     const tlfLimpio = nuevoChoferTelefono.trim().replace(/\D/g, "");
     if (tlfLimpio) {
       if (!regexTelefonoVE.test(tlfLimpio)) {
-        alert("⚠️ El número de teléfono del chofer debe ser válido en Venezuela (11 dígitos comenzando por 0414, 0424, 0412, 0416, 0426 o código de área 02xx, ej: 04141234567).");
+        alert("⚠️ El número de teléfono del chofer debe ser válido en Venezuela (11 dígitos comenzando por 0414, 0424, 0412, 0422, 0416, 0426 o código de área 02xx, ej: 04141234567).");
         return;
       }
     }

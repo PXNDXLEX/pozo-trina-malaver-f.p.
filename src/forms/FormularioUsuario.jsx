@@ -197,11 +197,11 @@ export function FormularioUsuario({ onUsuarioRegistrado }) {
     }
 
     // 📞 Validación de Teléfono (Venezuela: 11 dígitos, ej: 04141234567)
-    const regexTelefonoVE = /^(0414|0424|0412|0416|0426|02\d{2})\d{7}$/;
+    const regexTelefonoVE = /^(0414|0424|0412|0422|0416|0426|02\d{2})\d{7}$/;
     const telefonoLimpio = telefonoChofer.trim().replace(/\D/g, "");
     if (telefonoLimpio) {
       if (!regexTelefonoVE.test(telefonoLimpio)) {
-        alert("⚠️ El número de teléfono debe ser válido en Venezuela (11 dígitos comenzando por 0414, 0424, 0412, 0416, 0426 o código de área 02xx, ej: 04141234567).");
+        alert("⚠️ El número de teléfono debe ser válido en Venezuela (11 dígitos comenzando por 0414, 0424, 0412, 0422, 0416, 0426 o código de área 02xx, ej: 04141234567).");
         setLoading(false);
         return;
       }
@@ -658,7 +658,7 @@ export function FormularioUsuario({ onUsuarioRegistrado }) {
                     onChange={(e) => setTelefonoChofer(e.target.value.replace(/\D/g, "").slice(0, 11))}
                   />
                   <small style={{ color: "#94a3b8", fontSize: "11px", marginTop: "4px", display: "block" }}>
-                    ℹ️ Solo números (11 dígitos): código de operadora (0414, 0424, 0412, 0416, 0426 o 02xx) + 7 dígitos.
+                    ℹ️ Solo números (11 dígitos): código de operadora (0414, 0424, 0412, 0422, 0416, 0426 o 02xx) + 7 dígitos.
                   </small>
                 </FieldBox>
 
