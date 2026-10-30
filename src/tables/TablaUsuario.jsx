@@ -81,16 +81,91 @@ export function TablaUsuario() {
   }, []);
 
   const handleEliminar = async (id, nombre) => {
-    const confirmar = window.confirm(`¿Estás seguro de que deseas eliminar a ${nombre}?`);
-    if (!confirmar) return;
+    try {
+      // 1. Buscar todos los camiones asociados a este usuario
+      // Pueden estar asociados por perfil_id, por camionero_id o por nombre de chofer
+      const { data: camionesPorPerfil } = await supabase
+        .from("camiones")
+        .select("id, placa, chofer, perfil_id, camionero_id")
+        .eq("perfil_id", id);
 
-    const { error } = await supabase.from("perfiles").delete().eq("id", id);
+      // Buscar fichas en camioneros vinculadas a este usuario
+      const { data: fichasCamionero } = await supabase
+        .from("camioneros")
+        .select("id")
+        .eq("perfil_id", id);
 
-    if (error) {
-      alert(`Error al eliminar: ${error.message}`);
-    } else {
-      alert("Usuario eliminado de la base de datos.");
-      obtenerUsuarios();
+      const camioneroIds = (fichasCamionero || []).map((f) => f.id);
+      let camionesPorCamioneroId = [];
+      if (camioneroIds.length > 0) {
+        const { data: cByCamId } = await supabase
+          .from("camiones")
+          .select("id, placa, chofer, perfil_id, camionero_id")
+          .in("camionero_id", camioneroIds);
+        camionesPorCamioneroId = cByCamId || [];
+      }
+
+      // Buscar también por coincidencia de nombre de chofer
+      const nombreLimpio = (nombre || "").trim();
+      let camionesPorChofer = [];
+      if (nombreLimpio) {
+        const { data: cByChofer } = await supabase
+          .from("camiones")
+          .select("id, placa, chofer, perfil_id, camionero_id")
+          .ilike("chofer", `%${nombreLimpio}%`);
+        camionesPorChofer = cByChofer || [];
+      }
+
+      // Unificar camiones sin duplicados
+      const mapCamiones = new Map();
+      (camionesPorPerfil || []).forEach((c) => mapCamiones.set(c.id, c));
+      (camionesPorCamioneroId || []).forEach((c) => mapCamiones.set(c.id, c));
+      (camionesPorChofer || []).forEach((c) => mapCamiones.set(c.id, c));
+      const camionesAsociados = Array.from(mapCamiones.values());
+
+      let mensaje = `¿Estás seguro de que deseas eliminar a ${nombre}?`;
+      if (camionesAsociados.length > 0) {
+        const placas = camionesAsociados.map((c) => `"${c.placa}" (${c.chofer || "Sin Chofer"})`).join(", ");
+        mensaje = `⚠️ ATENCIÓN: El usuario "${nombre}" tiene ${camionesAsociados.length} camión(es) cisterna registrado(s) en el sistema:\n[${placas}]\n\nAl eliminar al chofer, ¿deseas retirar permanentemente sus camiones y los registros de recargas asociados para que no sigan apareciendo?`;
+      }
+
+      const confirmar = window.confirm(mensaje);
+      if (!confirmar) return;
+
+      // 2. Si tiene camiones asociados, eliminar registros_carga y los camiones
+      if (camionesAsociados.length > 0) {
+        for (const camion of camionesAsociados) {
+          // Limpiar registros_carga asociados a este camión
+          await supabase.from("registros_carga").delete().eq("camion_id", camion.id);
+          // Eliminar el camión
+          await supabase.from("camiones").delete().eq("id", camion.id);
+        }
+      }
+
+      // 3. Eliminar fichas en la tabla camioneros si existen
+      if (camioneroIds.length > 0) {
+        await supabase.from("camioneros").delete().in("id", camioneroIds);
+      }
+      if (nombreLimpio) {
+        await supabase.from("camioneros").delete().ilike("nombre", `%${nombreLimpio}%`);
+      }
+
+      // 4. Eliminar el perfil del usuario
+      const { error } = await supabase.from("perfiles").delete().eq("id", id);
+
+      if (error) {
+        alert(`Error al eliminar usuario: ${error.message}`);
+      } else {
+        alert(
+          camionesAsociados.length > 0
+            ? `🎉 Usuario y sus ${camionesAsociados.length} camión(es) asociados han sido eliminados con éxito.`
+            : "Usuario eliminado de la base de datos."
+        );
+        obtenerUsuarios();
+      }
+    } catch (err) {
+      console.error("Error al procesar eliminación de usuario:", err);
+      alert(`Error inesperado al eliminar: ${err.message}`);
     }
   };
 

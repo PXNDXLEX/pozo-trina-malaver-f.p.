@@ -42,27 +42,50 @@ export function FormularioCamiones({ onCamionAgregado }) {
   const obtenerCamioneros = async () => {
     setCargandoCamioneros(true);
     try {
-      // 1. Intentar cargar desde la tabla dedicada public.camioneros
-      let { data: listaCamioneros, error: errCamioneros } = await supabase
-        .from("camioneros")
-        .select("id, nombre, cedula, telefono, perfil_id")
-        .order("nombre", { ascending: true });
+      // 1. Cargar choferes de la tabla camioneros
+      let listaCamioneros = [];
+      try {
+        const { data: cData } = await supabase
+          .from("camioneros")
+          .select("id, nombre, cedula, telefono, perfil_id")
+          .order("nombre", { ascending: true });
+        if (cData) listaCamioneros = cData;
+      } catch (errCam) {
+        console.warn("Tabla camioneros no disponible o vacía:", errCam);
+      }
 
-      // Fallback a perfiles si la tabla camioneros aún no existe
-      if (errCamioneros || !listaCamioneros) {
+      // 2. Cargar siempre los usuarios con rol 'camionero' de la tabla perfiles para no omitir ninguno
+      try {
         const { data: perfilesData } = await supabase
           .from("perfiles")
           .select("id, nombre, cedula")
           .eq("rol", "camionero")
           .order("nombre", { ascending: true });
 
-        listaCamioneros = (perfilesData || []).map((p) => ({
-          id: p.id,
-          nombre: p.nombre,
-          cedula: p.cedula,
-          telefono: "",
-          perfil_id: p.id,
-        }));
+        if (perfilesData && perfilesData.length > 0) {
+          perfilesData.forEach((p) => {
+            const existe = listaCamioneros.find(
+              (c) =>
+                c.perfil_id === p.id ||
+                (c.cedula && p.cedula && c.cedula.trim() === p.cedula.trim()) ||
+                (c.nombre && p.nombre && c.nombre.trim().toLowerCase() === p.nombre.trim().toLowerCase())
+            );
+
+            if (!existe) {
+              listaCamioneros.push({
+                id: p.id,
+                nombre: p.nombre,
+                cedula: p.cedula || "",
+                telefono: "",
+                perfil_id: p.id,
+              });
+            } else if (!existe.perfil_id) {
+              existe.perfil_id = p.id;
+            }
+          });
+        }
+      } catch (errPerf) {
+        console.warn("Error al cargar perfiles de camioneros:", errPerf);
       }
 
       // Obtener cantidad de camiones que tiene cada chofer
@@ -151,7 +174,22 @@ export function FormularioCamiones({ onCamionAgregado }) {
 
         choferNombre = nuevoNombre.trim();
 
-        // 1. Insertar nuevo camionero en la tabla camioneros
+        // 1. Buscar si ya existe un perfil en perfiles con ese nombre o cédula
+        try {
+          const { data: perfilExistente } = await supabase
+            .from("perfiles")
+            .select("id")
+            .or(`cedula.eq."${nuevaCedula.trim()}",nombre.ilike."${choferNombre}"`)
+            .maybeSingle();
+
+          if (perfilExistente) {
+            perfilId = perfilExistente.id;
+          }
+        } catch (ePerf) {
+          console.warn("Búsqueda de perfil existente:", ePerf);
+        }
+
+        // 2. Insertar nuevo camionero en la tabla camioneros si es posible
         try {
           const { data: newCamionero, error: errNewCam } = await supabase
             .from("camioneros")
@@ -160,6 +198,7 @@ export function FormularioCamiones({ onCamionAgregado }) {
                 nombre: choferNombre,
                 cedula: nuevaCedula.trim() || null,
                 telefono: nuevoTelefono.trim() || null,
+                perfil_id: perfilId || null,
               },
             ])
             .select("id")
@@ -169,7 +208,7 @@ export function FormularioCamiones({ onCamionAgregado }) {
             camioneroId = newCamionero.id;
           }
         } catch (errInsertCamionero) {
-          console.warn("Fallo al insertar en camioneros (posible tabla no migrada):", errInsertCamionero);
+          console.warn("Fallo al insertar en camioneros:", errInsertCamionero);
         }
       } else {
         // Modo chofer existente

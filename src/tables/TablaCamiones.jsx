@@ -109,16 +109,50 @@ export function TablaCamiones() {
 
   // Eliminar camión
   const handleEliminar = async (id, placa, chofer) => {
-    const confirmar = window.confirm(`¿Estás seguro de que deseas eliminar la unidad cisterna ${placa} (${chofer || "Sin Chofer"})?`);
-    if (!confirmar) return;
+    try {
+      // 1. Verificar si tiene registros en registros_carga
+      const { count, error: countError } = await supabase
+        .from("registros_carga")
+        .select("id", { count: "exact", head: true })
+        .eq("camion_id", id);
 
-    const { error } = await supabase.from("camiones").delete().eq("id", id);
+      if (countError) {
+        console.error("Error al verificar cargas asociadas:", countError);
+      }
 
-    if (error) {
-      alert(`Error al eliminar: ${error.message}`);
-    } else {
-      alert("✅ Camión eliminado de la base de datos.");
-      consultar();
+      let mensaje = `¿Estás seguro de que deseas eliminar la unidad cisterna ${placa} (${chofer || "Sin Chofer"})?`;
+      if (count && count > 0) {
+        mensaje = `⚠️ ATENCIÓN: El camión con placa "${placa}" (${chofer || "Sin Chofer"}) tiene ${count} registro(s) de recarga/ventas asociados.\n\nPara eliminar el camión de la base de datos, también se eliminarán todos sus registros asociados para mantener la integridad de los datos.\n\n¿Deseas continuar y eliminar el camión junto con sus registros?`;
+      }
+
+      const confirmar = window.confirm(mensaje);
+      if (!confirmar) return;
+
+      // 2. Eliminar registros_carga asociados si existen para no violar la foreign key
+      if (count && count > 0) {
+        const { error: errCargas } = await supabase
+          .from("registros_carga")
+          .delete()
+          .eq("camion_id", id);
+
+        if (errCargas) {
+          alert(`Error al eliminar registros de carga asociados: ${errCargas.message}`);
+          return;
+        }
+      }
+
+      // 3. Eliminar el camión
+      const { error: errCamion } = await supabase.from("camiones").delete().eq("id", id);
+
+      if (errCamion) {
+        alert(`Error al eliminar camión: ${errCamion.message}`);
+      } else {
+        alert("✅ Camión y sus registros asociados eliminados con éxito.");
+        consultar();
+      }
+    } catch (err) {
+      console.error("Error al eliminar camión:", err);
+      alert(`Error inesperado al eliminar: ${err.message}`);
     }
   };
 
