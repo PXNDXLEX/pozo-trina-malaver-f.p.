@@ -146,6 +146,30 @@ export function FormularioUsuario({ onUsuarioRegistrado }) {
     e.preventDefault();
     setLoading(true);
 
+    const cedulaLimpia = cedula.trim().replace(/\D/g, "");
+    if (!cedulaLimpia || !/^\d{5,8}$/.test(cedulaLimpia)) {
+      alert("⚠️ El número de cédula debe contener únicamente números y tener entre 5 y 8 dígitos.");
+      setLoading(false);
+      return;
+    }
+
+    // 🔒 Verificar que la cédula no esté previamente registrada (será el usuario de login)
+    try {
+      const { data: usuarioExistente } = await supabase
+        .from("perfiles")
+        .select("id, nombre")
+        .eq("cedula", cedulaLimpia)
+        .maybeSingle();
+
+      if (usuarioExistente) {
+        alert(`⚠️ El número de cédula ${cedulaLimpia} ya está registrado en el sistema para el usuario "${usuarioExistente.nombre || "Usuario"}". Recuerda que la cédula es el identificador único para iniciar sesión.`);
+        setLoading(false);
+        return;
+      }
+    } catch (errCheckCedula) {
+      console.warn("Error al comprobar cédula única en perfiles:", errCheckCedula);
+    }
+
     const regexPlaca = /^[A-Z0-9]{5,8}$/;
 
     // Validaciones si el rol es Camionero
@@ -246,7 +270,7 @@ export function FormularioUsuario({ onUsuarioRegistrado }) {
         const userId = authData.user.id;
         const perfilBase = {
           id: userId,
-          cedula: cedula.trim(),
+          cedula: cedulaLimpia,
           nombre: nombre.trim(),
           email: email.trim(),
           rol,
@@ -324,11 +348,11 @@ export function FormularioUsuario({ onUsuarioRegistrado }) {
             try {
               // 1. Verificar si ya existía una ficha en camioneros con esa cédula o nombre para NO duplicarla
               let choferExistente = null;
-              if (cedula.trim()) {
+              if (cedulaLimpia) {
                 const { data: porCedula } = await supabase
                   .from("camioneros")
                   .select("id, nombre")
-                  .eq("cedula", cedula.trim())
+                  .eq("cedula", cedulaLimpia)
                   .maybeSingle();
                 if (porCedula) choferExistente = porCedula;
               }
@@ -348,7 +372,7 @@ export function FormularioUsuario({ onUsuarioRegistrado }) {
                   .from("camioneros")
                   .update({
                     nombre: nombre.trim(),
-                    cedula: cedula.trim(),
+                    cedula: cedulaLimpia,
                     telefono: telefonoChofer.trim() || null,
                     perfil_id: userId,
                   })
@@ -366,7 +390,7 @@ export function FormularioUsuario({ onUsuarioRegistrado }) {
                   .insert([
                     {
                       nombre: nombre.trim(),
-                      cedula: cedula.trim(),
+                      cedula: cedulaLimpia,
                       telefono: telefonoChofer.trim() || null,
                       perfil_id: userId,
                     },
@@ -483,11 +507,17 @@ export function FormularioUsuario({ onUsuarioRegistrado }) {
             </label>
             <input
               type="text"
-              placeholder="Ej: 12345678"
+              inputMode="numeric"
+              pattern="[0-9]*"
+              maxLength={8}
+              placeholder="Ej: 12345678 (máx. 8 dígitos)"
               value={cedula}
-              onChange={(e) => setCedula(e.target.value)}
+              onChange={(e) => setCedula(e.target.value.replace(/\D/g, "").slice(0, 8))}
               required
             />
+            <small style={{ color: "#94a3b8", fontSize: "11px", marginTop: "4px", display: "block" }}>
+              ℹ️ Solo números, máximo 8 dígitos (será el usuario para iniciar sesión).
+            </small>
           </FieldBox>
 
           <FieldBox>

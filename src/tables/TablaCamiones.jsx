@@ -267,12 +267,21 @@ export function TablaCamiones() {
           return;
         }
 
+        const cedulaLimpia = nuevoChoferCedula.trim().replace(/\D/g, "");
+        if (nuevoChoferCedula.trim()) {
+          if (!/^\d{5,8}$/.test(cedulaLimpia)) {
+            alert("⚠️ La cédula de identidad del nuevo chofer debe contener únicamente números y tener entre 5 y 8 dígitos.");
+            setGuardando(false);
+            return;
+          }
+        }
+
         const { data: nuevoC, error: errC } = await supabase
           .from("camioneros")
           .insert([
             {
               nombre: nuevoChoferNombre.trim(),
-              cedula: nuevoChoferCedula.trim() || null,
+              cedula: cedulaLimpia || null,
               telefono: nuevoChoferTelefono.trim() || null,
             },
           ])
@@ -849,10 +858,16 @@ export function TablaCamiones() {
                           <label>Cédula de Identidad:</label>
                           <input
                             type="text"
-                            placeholder="Ej: 14523698"
+                            inputMode="numeric"
+                            pattern="[0-9]*"
+                            maxLength={8}
+                            placeholder="Ej: 14523698 (máx. 8 dígitos)"
                             value={nuevoChoferCedula}
-                            onChange={(e) => setNuevoChoferCedula(e.target.value)}
+                            onChange={(e) => setNuevoChoferCedula(e.target.value.replace(/\D/g, "").slice(0, 8))}
                           />
+                          <small style={{ color: "#94a3b8", fontSize: "11px", marginTop: "2px", display: "block" }}>
+                            ℹ️ Solo números, máximo 8 dígitos
+                          </small>
                         </FormField>
 
                         <FormField>

@@ -20,7 +20,12 @@ export function LoginTemplate() {
     setLoading(true);
 
     try {
-      const cedulaLimpia = String(cedula).trim();
+      const cedulaLimpia = String(cedula).trim().replace(/\D/g, "");
+      if (!cedulaLimpia) {
+        alert("Por favor ingresa tu número de cédula.");
+        setLoading(false);
+        return;
+      }
 
       const { data: perfilData, error: perfilError } = await supabase
         .from("perfiles")
@@ -83,9 +88,12 @@ export function LoginTemplate() {
               <MdBadge className="field-icon" />
               <input
                 type="text"
-                placeholder="Ej: 12345678"
+                inputMode="numeric"
+                pattern="[0-9]*"
+                maxLength={8}
+                placeholder="Ej: 12345678 (máx. 8 dígitos)"
                 value={cedula}
-                onChange={(e) => setCedula(e.target.value)}
+                onChange={(e) => setCedula(e.target.value.replace(/\D/g, "").slice(0, 8))}
                 required
               />
             </InputWrapper>

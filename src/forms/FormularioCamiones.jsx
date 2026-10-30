@@ -172,14 +172,27 @@ export function FormularioCamiones({ onCamionAgregado }) {
           return;
         }
 
+        const cedulaLimpia = nuevaCedula.trim().replace(/\D/g, "");
+        if (nuevaCedula.trim()) {
+          if (!/^\d{5,8}$/.test(cedulaLimpia)) {
+            alert("⚠️ La cédula de identidad del chofer debe contener únicamente números y tener entre 5 y 8 dígitos.");
+            setCargando(false);
+            return;
+          }
+        }
+
         choferNombre = nuevoNombre.trim();
 
         // 1. Buscar si ya existe un perfil en perfiles con ese nombre o cédula
         try {
+          let orQuery = `nombre.ilike."${choferNombre}"`;
+          if (cedulaLimpia) {
+            orQuery = `cedula.eq."${cedulaLimpia}",nombre.ilike."${choferNombre}"`;
+          }
           const { data: perfilExistente } = await supabase
             .from("perfiles")
             .select("id")
-            .or(`cedula.eq."${nuevaCedula.trim()}",nombre.ilike."${choferNombre}"`)
+            .or(orQuery)
             .maybeSingle();
 
           if (perfilExistente) {
@@ -196,7 +209,7 @@ export function FormularioCamiones({ onCamionAgregado }) {
             .insert([
               {
                 nombre: choferNombre,
-                cedula: nuevaCedula.trim() || null,
+                cedula: cedulaLimpia || null,
                 telefono: nuevoTelefono.trim() || null,
                 perfil_id: perfilId || null,
               },
@@ -398,10 +411,16 @@ export function FormularioCamiones({ onCamionAgregado }) {
                 </label>
                 <input
                   type="text"
-                  placeholder="Ej: V-18456789"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  maxLength={8}
+                  placeholder="Ej: 18456789 (máx. 8 dígitos)"
                   value={nuevaCedula}
-                  onChange={(e) => setNuevaCedula(e.target.value)}
+                  onChange={(e) => setNuevaCedula(e.target.value.replace(/\D/g, "").slice(0, 8))}
                 />
+                <small style={{ color: "#94a3b8", fontSize: "11px", marginTop: "4px", display: "block" }}>
+                  ℹ️ Solo números, máximo 8 dígitos (sin letras 'V-' ni guiones).
+                </small>
               </FieldBox>
 
               <FieldBox style={{ gridColumn: "1 / -1" }}>

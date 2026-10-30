@@ -314,14 +314,23 @@ export function ModalRegistrarRecarga({ isOpen, onClose, onRecargaExitosa }) {
       return;
     }
 
+    if (nuevoChoferCedula.trim()) {
+      const cedLimpia = nuevoChoferCedula.trim().replace(/\D/g, "");
+      if (!/^\d{5,8}$/.test(cedLimpia)) {
+        alert("⚠️ El número de cédula debe contener únicamente números y tener entre 5 y 8 dígitos.");
+        return;
+      }
+    }
+
     setGuardandoInline(true);
     try {
+      const cedulaFinal = nuevoChoferCedula.trim().replace(/\D/g, "").slice(0, 8) || null;
       const { data, error } = await supabase
         .from("camioneros")
         .insert([
           {
             nombre: nuevoChoferNombre.trim(),
-            cedula: nuevoChoferCedula.trim() || null,
+            cedula: cedulaFinal,
             telefono: nuevoChoferTelefono.trim() || null,
           },
         ])
@@ -433,9 +442,14 @@ export function ModalRegistrarRecarga({ isOpen, onClose, onRecargaExitosa }) {
       return;
     }
 
-    if (tipoRegistro === "pagado") {
-      if (metodoPago !== "Efectivo" && !referencia.trim()) {
-        alert("La referencia bancaria es obligatoria para registrar el pago.");
+    if (tipoRegistro === "pagado" && metodoPago !== "Efectivo") {
+      const refLimpia = referencia.trim().replace(/\D/g, "");
+      if (!refLimpia) {
+        alert("⚠️ La referencia bancaria es obligatoria para registrar el pago.");
+        return;
+      }
+      if (!/^\d{4,12}$/.test(refLimpia)) {
+        alert("⚠️ La referencia bancaria debe contener únicamente números y tener entre 4 y 12 dígitos.");
         return;
       }
     }
@@ -662,10 +676,16 @@ export function ModalRegistrarRecarga({ isOpen, onClose, onRecargaExitosa }) {
                       <label>Cédula de Identidad:</label>
                       <input
                         type="text"
-                        placeholder="Ej: 12345678"
+                        inputMode="numeric"
+                        pattern="[0-9]*"
+                        maxLength={8}
+                        placeholder="Ej: 12345678 (máx. 8 dígitos)"
                         value={nuevoChoferCedula}
-                        onChange={(e) => setNuevoChoferCedula(e.target.value)}
+                        onChange={(e) => setNuevoChoferCedula(e.target.value.replace(/\D/g, "").slice(0, 8))}
                       />
+                      <small style={{ color: "#94a3b8", fontSize: "11px", marginTop: "2px", display: "block" }}>
+                        ℹ️ Solo números, máximo 8 dígitos
+                      </small>
                     </div>
                     <div>
                       <label>Teléfono:</label>
@@ -1129,11 +1149,17 @@ export function ModalRegistrarRecarga({ isOpen, onClose, onRecargaExitosa }) {
                         </Label>
                         <Input
                           type="text"
-                          placeholder="Ej: 00481923"
+                          inputMode="numeric"
+                          pattern="[0-9]*"
+                          maxLength={12}
+                          placeholder="Ej: 00481923 (solo números, 4-12 dígitos)"
                           value={referencia}
-                          onChange={(e) => setReferencia(e.target.value)}
+                          onChange={(e) => setReferencia(e.target.value.replace(/\D/g, "").slice(0, 12))}
                           required
                         />
+                        <small style={{ color: "#94a3b8", fontSize: "11px", marginTop: "4px", display: "block" }}>
+                          ℹ️ Solo números sin letras ni guiones (entre 4 y 12 dígitos).
+                        </small>
                       </FormGroup>
                     )}
 

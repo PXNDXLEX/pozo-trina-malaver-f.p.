@@ -182,9 +182,31 @@ export function TablaUsuario() {
   };
 
   const handleGuardarEdicion = async (id) => {
+    const cedulaLimpia = cedulaEdit.trim().replace(/\D/g, "");
+    if (!cedulaLimpia || !/^\d{5,8}$/.test(cedulaLimpia)) {
+      alert("⚠️ El número de cédula debe contener únicamente números y tener entre 5 y 8 dígitos.");
+      return;
+    }
+
+    try {
+      const { data: cedulaExistente } = await supabase
+        .from("perfiles")
+        .select("id, nombre")
+        .eq("cedula", cedulaLimpia)
+        .neq("id", id)
+        .maybeSingle();
+
+      if (cedulaExistente) {
+        alert(`⚠️ El número de cédula ${cedulaLimpia} ya pertenece a otro usuario registrado ("${cedulaExistente.nombre || "Usuario"}"). Las cédulas de usuario deben ser únicas.`);
+        return;
+      }
+    } catch (errCheck) {
+      console.warn("Error al verificar cédula única:", errCheck);
+    }
+
     const payload = {
       nombre: nombreEdit.trim(),
-      cedula: cedulaEdit.trim(),
+      cedula: cedulaLimpia,
       rol: rolEdit,
     };
 
@@ -621,12 +643,32 @@ export function TablaUsuario() {
     try {
       const userId = camioneroModalUser.id;
 
+      const cedulaLimpia = modalCedula.trim().replace(/\D/g, "");
+      if (!cedulaLimpia || !/^\d{5,8}$/.test(cedulaLimpia)) {
+        alert("⚠️ El número de cédula debe contener únicamente números y tener entre 5 y 8 dígitos.");
+        setGuardandoModalCamionero(false);
+        return;
+      }
+
+      const { data: cedulaExistente } = await supabase
+        .from("perfiles")
+        .select("id, nombre")
+        .eq("cedula", cedulaLimpia)
+        .neq("id", userId)
+        .maybeSingle();
+
+      if (cedulaExistente) {
+        alert(`⚠️ El número de cédula ${cedulaLimpia} ya está asignado a otro usuario ("${cedulaExistente.nombre || "Usuario"}"). Las cédulas deben ser únicas.`);
+        setGuardandoModalCamionero(false);
+        return;
+      }
+
       // 4. Actualizar tabla perfiles
       const { error: errPerfil } = await supabase
         .from("perfiles")
         .update({
           nombre: modalNombre.trim(),
-          cedula: modalCedula.trim(),
+          cedula: cedulaLimpia,
           rol: modalRol,
         })
         .eq("id", userId);
@@ -649,7 +691,7 @@ export function TablaUsuario() {
           .from("camioneros")
           .update({
             nombre: modalNombre.trim(),
-            cedula: modalCedula.trim(),
+            cedula: cedulaLimpia,
             telefono: modalTelefono.trim() || null,
             perfil_id: userId,
           })
@@ -660,7 +702,7 @@ export function TablaUsuario() {
           .insert([
             {
               nombre: modalNombre.trim(),
-              cedula: modalCedula.trim(),
+              cedula: cedulaLimpia,
               telefono: modalTelefono.trim() || null,
               perfil_id: userId,
             },
@@ -779,9 +821,12 @@ export function TablaUsuario() {
                         {esModoEdicion ? (
                           <InputInline
                             type="text"
+                            inputMode="numeric"
+                            pattern="[0-9]*"
+                            maxLength={8}
                             value={cedulaEdit}
-                            onChange={(e) => setCedulaEdit(e.target.value)}
-                            placeholder="Cédula"
+                            onChange={(e) => setCedulaEdit(e.target.value.replace(/\D/g, "").slice(0, 8))}
+                            placeholder="Máx 8 núm"
                           />
                         ) : (
                           <span className="cedula-tag">{usr.cedula}</span>
@@ -887,8 +932,12 @@ export function TablaUsuario() {
                       <label>Cédula:</label>
                       <InputInline
                         type="text"
+                        inputMode="numeric"
+                        pattern="[0-9]*"
+                        maxLength={8}
                         value={cedulaEdit}
-                        onChange={(e) => setCedulaEdit(e.target.value)}
+                        onChange={(e) => setCedulaEdit(e.target.value.replace(/\D/g, "").slice(0, 8))}
+                        placeholder="Máx 8 dígitos"
                       />
 
                       <label>Rol:</label>
@@ -1015,10 +1064,17 @@ export function TablaUsuario() {
                           <label>Cédula de Identidad: *</label>
                           <input
                             type="text"
+                            inputMode="numeric"
+                            pattern="[0-9]*"
+                            maxLength={8}
+                            placeholder="Ej: 12345678 (máx. 8 dígitos)"
                             value={modalCedula}
-                            onChange={(e) => setModalCedula(e.target.value)}
+                            onChange={(e) => setModalCedula(e.target.value.replace(/\D/g, "").slice(0, 8))}
                             required
                           />
+                          <small style={{ color: "#94a3b8", fontSize: "11px", marginTop: "2px", display: "block" }}>
+                            ℹ️ Solo números, máximo 8 dígitos (identificador de usuario)
+                          </small>
                         </FieldItem>
 
                         <FieldItem>

@@ -175,9 +175,16 @@ export function DashboardRegistrador() {
       return;
     }
 
-    if (tipoRegistro === "pagado" && metodoPago !== "Efectivo" && !referencia.trim()) {
-      alert("⚠️ La referencia bancaria es obligatoria para pagos por Transferencia, Pago Móvil o Punto.");
-      return;
+    if (tipoRegistro === "pagado" && metodoPago !== "Efectivo") {
+      const refLimpia = referencia.trim().replace(/\D/g, "");
+      if (!refLimpia) {
+        alert("⚠️ La referencia bancaria es obligatoria para pagos por Transferencia, Pago Móvil o Punto.");
+        return;
+      }
+      if (!/^\d{4,12}$/.test(refLimpia)) {
+        alert("⚠️ La referencia bancaria debe contener únicamente números y tener entre 4 y 12 dígitos.");
+        return;
+      }
     }
 
     // 📸 Foto de la cisterna en el pozo: OBLIGATORIA para el registrador
@@ -475,11 +482,19 @@ export function DashboardRegistrador() {
                   </Label>
                   <Input
                     type="text"
-                    placeholder={metodoPago === "Efectivo" ? "Opcional para efectivo" : "Ej: 98451230"}
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    maxLength={12}
+                    placeholder={metodoPago === "Efectivo" ? "Opcional para efectivo" : "Ej: 98451230 (solo números, 4-12 dígitos)"}
                     value={referencia}
-                    onChange={(e) => setReferencia(e.target.value)}
+                    onChange={(e) => setReferencia(e.target.value.replace(/\D/g, "").slice(0, 12))}
                     required={metodoPago !== "Efectivo"}
                   />
+                  {metodoPago !== "Efectivo" && (
+                    <small style={{ color: "#94a3b8", fontSize: "11px", marginTop: "4px", display: "block" }}>
+                      ℹ️ Solo números sin letras ni guiones (entre 4 y 12 dígitos).
+                    </small>
+                  )}
                 </FormGroup>
               </PaymentFieldsGrid>
 
