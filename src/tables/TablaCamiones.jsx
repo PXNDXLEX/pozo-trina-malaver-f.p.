@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { supabase } from "../supabase/supabase.config";
 import styled from "styled-components";
+import { confirmarAccion } from "../utils/alerts";
 import {
   MdLocalShipping,
   MdConfirmationNumber,
@@ -125,7 +126,13 @@ export function TablaCamiones() {
         mensaje = `⚠️ ATENCIÓN: El camión con placa "${placa}" (${chofer || "Sin Chofer"}) tiene ${count} registro(s) de recarga/ventas asociados.\n\nPara eliminar el camión de la base de datos, también se eliminarán todos sus registros asociados para mantener la integridad de los datos.\n\n¿Deseas continuar y eliminar el camión junto con sus registros?`;
       }
 
-      const confirmar = window.confirm(mensaje);
+      const confirmar = await confirmarAccion({
+        titulo: "Confirmar Eliminación",
+        mensaje,
+        textoConfirmar: "Sí, eliminar",
+        textoCancelar: "Cancelar",
+        esPeligroso: true,
+      });
       if (!confirmar) return;
 
       // 2. Eliminar registros_carga asociados si existen para no violar la foreign key

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { supabase } from "../supabase/supabase.config";
 import styled from "styled-components";
+import { confirmarAccion } from "../utils/alerts";
 import {
   MdPeople,
   MdEdit,
@@ -129,7 +130,13 @@ export function TablaUsuario() {
         mensaje = `⚠️ ATENCIÓN: El usuario "${nombre}" tiene ${camionesAsociados.length} camión(es) cisterna registrado(s) en el sistema:\n[${placas}]\n\nAl eliminar al chofer, ¿deseas retirar permanentemente sus camiones y los registros de recargas asociados para que no sigan apareciendo?`;
       }
 
-      const confirmar = window.confirm(mensaje);
+      const confirmar = await confirmarAccion({
+        titulo: "Confirmar Eliminación",
+        mensaje,
+        textoConfirmar: "Sí, eliminar",
+        textoCancelar: "Cancelar",
+        esPeligroso: true,
+      });
       if (!confirmar) return;
 
       // 2. Si tiene camiones asociados, eliminar registros_carga y los camiones
@@ -529,10 +536,14 @@ export function TablaUsuario() {
   };
 
   // ❌ Desvincular de la ficha de camionero actual
-  const handleDesvincularFichaCamionero = () => {
-    const confirmar = window.confirm(
-      `¿Deseas desvincular este usuario de la ficha de chofer "${fichaCamioneroInfo?.nombre || modalNombre}"?\n\nPodrás seleccionar otro chofer existente con sus camiones o registrar camiones independientes.`
-    );
+  const handleDesvincularFichaCamionero = async () => {
+    const confirmar = await confirmarAccion({
+      titulo: "¿Desvincular Chofer?",
+      mensaje: `¿Deseas desvincular este usuario de la ficha de chofer "${fichaCamioneroInfo?.nombre || modalNombre}"?<br><br><small style="color:#94a3b8">Podrás seleccionar otro chofer existente con sus camiones o registrar camiones independientes.</small>`,
+      textoConfirmar: "Sí, desvincular",
+      textoCancelar: "Cancelar",
+      esPeligroso: false,
+    });
     if (!confirmar) return;
 
     setCamioneroId(null);
@@ -547,8 +558,14 @@ export function TablaUsuario() {
     );
   };
 
-  const desvincularCamion = (camionObj) => {
-    const confirmar = window.confirm(`¿Deseas desvincular el camión ${camionObj.placa} de ${modalNombre}?`);
+  const desvincularCamion = async (camionObj) => {
+    const confirmar = await confirmarAccion({
+      titulo: "¿Desvincular Camión?",
+      mensaje: `¿Deseas desvincular el camión <strong>${camionObj.placa}</strong> de ${modalNombre}?`,
+      textoConfirmar: "Sí, desvincular",
+      textoCancelar: "Cancelar",
+      esPeligroso: false,
+    });
     if (!confirmar) return;
 
     setCamionesAsignados((prev) => prev.filter((c) => c.id !== camionObj.id));
