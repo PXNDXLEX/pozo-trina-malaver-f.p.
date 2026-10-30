@@ -264,9 +264,24 @@ export function CuentasPorCobrar() {
       return;
     }
 
-    if (metodoPago !== "Efectivo" && !referencia.trim()) {
-      alert("Por favor ingresa el número de referencia bancaria.");
-      return;
+    if (metodoPago !== "Efectivo") {
+      const refLimpia = referencia.trim();
+      if (!refLimpia) {
+        alert("Por favor ingresa el número de referencia bancaria.");
+        return;
+      }
+
+      if (metodoPago === "Pago Móvil" || metodoPago === "Transferencia") {
+        if (!/^\d{4,12}$/.test(refLimpia)) {
+          alert(`⚠️ El número de referencia para ${metodoPago} debe contener únicamente números (entre 4 y 12 dígitos, ej: 00481923). No se permiten letras.`);
+          return;
+        }
+      } else {
+        if (!/^[A-Za-z0-9]{4,20}$/.test(refLimpia)) {
+          alert("⚠️ La referencia ingresada debe contener entre 4 y 20 caracteres alfanuméricos válidos.");
+          return;
+        }
+      }
     }
 
     // 📸 Validación obligatoria de comprobante para choferes camioneros
@@ -701,11 +716,29 @@ export function CuentasPorCobrar() {
                       </label>
                       <input
                         type="text"
-                        placeholder="Ej: 00481923"
+                        inputMode={metodoPago === "Zelle" ? "text" : "numeric"}
+                        pattern={metodoPago === "Zelle" ? "[A-Za-z0-9]*" : "[0-9]*"}
+                        maxLength={metodoPago === "Zelle" ? 20 : 12}
+                        placeholder={
+                          metodoPago === "Zelle"
+                            ? "Ej: CONF123456"
+                            : "Ej: 00481923 (solo números, 4-12 dígitos)"
+                        }
                         value={referencia}
-                        onChange={(e) => setReferencia(e.target.value)}
+                        onChange={(e) => {
+                          if (metodoPago === "Zelle") {
+                            setReferencia(e.target.value.replace(/[^A-Za-z0-9]/g, "").slice(0, 20));
+                          } else {
+                            setReferencia(e.target.value.replace(/\D/g, "").slice(0, 12));
+                          }
+                        }}
                         required
                       />
+                      <small style={{ color: "#94a3b8", fontSize: "11px", marginTop: "4px", display: "block" }}>
+                        {metodoPago === "Zelle"
+                          ? "ℹ️ Ingresa el código alfanumérico de confirmación de Zelle (4 a 20 caracteres)."
+                          : "ℹ️ Solo números sin letras ni guiones (entre 4 y 12 dígitos)."}
+                      </small>
                     </FormField>
                   )}
 

@@ -181,10 +181,24 @@ export function FormularioVentas({ OnVentaRealizada }) {
   const procesarLoteCargas = async (esDeuda = false, pagoIdValor = null) => {
     if (carritoCargas.length === 0) return;
 
-   if (!esDeuda && metodo !== "Efectivo" && !referencia.trim()) {
-    alert("Por favor, ingrese el número de referencia de la transacción bancaria.");
-    return;
-  }
+    if (!esDeuda && metodo !== "Efectivo") {
+      const refLimpia = referencia.trim();
+      if (!refLimpia) {
+        alert("Por favor, ingrese el número de referencia de la transacción bancaria.");
+        return;
+      }
+      if (metodo === "Pago Móvil" || metodo === "Transferencia") {
+        if (!/^\d{4,12}$/.test(refLimpia)) {
+          alert(`⚠️ El número de referencia para ${metodo} debe contener únicamente números (entre 4 y 12 dígitos, ej: 00123456). No se permiten letras.`);
+          return;
+        }
+      } else {
+        if (!/^[A-Za-z0-9]{4,20}$/.test(refLimpia)) {
+          alert("⚠️ La referencia bancaria debe contener entre 4 y 20 caracteres alfanuméricos válidos.");
+          return;
+        }
+      }
+    }
     setLoading(true);
 
     try {
@@ -364,9 +378,22 @@ export function FormularioVentas({ OnVentaRealizada }) {
                   </label>
                   <input
                     type="text"
+                    inputMode={metodo === "Zelle" ? "text" : "numeric"}
+                    pattern={metodo === "Zelle" ? "[A-Za-z0-9]*" : "[0-9]*"}
+                    maxLength={metodo === "Zelle" ? 20 : 12}
                     value={referencia}
-                    onChange={(e) => setReferencia(e.target.value)}
-                    placeholder="Ej: 00123456"
+                    onChange={(e) => {
+                      if (metodo === "Zelle") {
+                        setReferencia(e.target.value.replace(/[^A-Za-z0-9]/g, "").slice(0, 20));
+                      } else {
+                        setReferencia(e.target.value.replace(/\D/g, "").slice(0, 12));
+                      }
+                    }}
+                    placeholder={
+                      metodo === "Zelle"
+                        ? "Ej: CONF123456"
+                        : "Ej: 00123456 (solo números, 4-12 dígitos)"
+                    }
                     required
                     style={{
                       width: "100%",
@@ -377,6 +404,11 @@ export function FormularioVentas({ OnVentaRealizada }) {
                       borderRadius: "6px"
                     }}
                   />
+                  <small style={{ color: "#94a3b8", fontSize: "11px", marginTop: "4px", display: "block" }}>
+                    {metodo === "Zelle"
+                      ? "ℹ️ Ingresa el código de confirmación Zelle (4 a 20 caracteres)."
+                      : "ℹ️ Solo números sin letras ni guiones (entre 4 y 12 dígitos)."}
+                  </small>
                 </FieldBox>
               )}
             </>
