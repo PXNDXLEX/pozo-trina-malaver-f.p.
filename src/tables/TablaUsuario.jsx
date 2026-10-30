@@ -124,10 +124,10 @@ export function TablaUsuario() {
       (camionesPorChofer || []).forEach((c) => mapCamiones.set(c.id, c));
       const camionesAsociados = Array.from(mapCamiones.values());
 
-      let mensaje = `¿Estás seguro de que deseas eliminar a ${nombre}?`;
+      let mensaje = `¿Estás seguro de que deseas eliminar al usuario <strong>"${nombre}"</strong>?`;
       if (camionesAsociados.length > 0) {
-        const placas = camionesAsociados.map((c) => `"${c.placa}" (${c.chofer || "Sin Chofer"})`).join(", ");
-        mensaje = `⚠️ ATENCIÓN: El usuario "${nombre}" tiene ${camionesAsociados.length} camión(es) cisterna registrado(s) en el sistema:\n[${placas}]\n\nAl eliminar al chofer, ¿deseas retirar permanentemente sus camiones y los registros de recargas asociados para que no sigan apareciendo?`;
+        const placas = camionesAsociados.map((c) => `<strong>${c.placa}</strong> (${c.chofer || "Sin Chofer"})`).join(", ");
+        mensaje = `El usuario <strong>"${nombre}"</strong> tiene <strong>${camionesAsociados.length} camión(es) cisterna</strong> registrado(s):<br><span style="color: #00c3ff;">[ ${placas} ]</span><br><br>Al eliminar al chofer, ¿deseas retirar permanentemente sus camiones y los registros de recargas asociados para que no sigan apareciendo?`;
       }
 
       const confirmar = await confirmarAccion({

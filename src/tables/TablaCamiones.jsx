@@ -121,9 +121,9 @@ export function TablaCamiones() {
         console.error("Error al verificar cargas asociadas:", countError);
       }
 
-      let mensaje = `¿Estás seguro de que deseas eliminar la unidad cisterna ${placa} (${chofer || "Sin Chofer"})?`;
+      let mensaje = `¿Estás seguro de que deseas eliminar la unidad cisterna <strong>"${placa}"</strong> (${chofer || "Sin Chofer"})?`;
       if (count && count > 0) {
-        mensaje = `⚠️ ATENCIÓN: El camión con placa "${placa}" (${chofer || "Sin Chofer"}) tiene ${count} registro(s) de recarga/ventas asociados.\n\nPara eliminar el camión de la base de datos, también se eliminarán todos sus registros asociados para mantener la integridad de los datos.\n\n¿Deseas continuar y eliminar el camión junto con sus registros?`;
+        mensaje = `El camión con placa <strong>"${placa}"</strong> (${chofer || "Sin Chofer"}) tiene <strong>${count} registro(s) de recargas/ventas</strong> asociados.<br><br>Para eliminar el camión de la base de datos, también se eliminarán todos sus registros asociados para mantener la integridad de los datos.<br><br>¿Deseas continuar y eliminar el camión junto con sus registros?`;
       }
 
       const confirmar = await confirmarAccion({

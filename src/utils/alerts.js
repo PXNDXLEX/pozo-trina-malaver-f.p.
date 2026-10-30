@@ -1,4 +1,5 @@
 import Swal from "sweetalert2";
+import "sweetalert2/dist/sweetalert2.min.css";
 
 /**
  * Detecta el tipo de alerta e icono a partir del contenido del mensaje
@@ -76,6 +77,7 @@ function limpiarMensaje(texto) {
   return texto
     .replace(/^[\s🎉⚠️✅❌⏳ℹ️]+/, "")
     .replace(/^¡+/, "¡")
+    .replace(/\n/g, "<br/>")
     .trim();
 }
 
