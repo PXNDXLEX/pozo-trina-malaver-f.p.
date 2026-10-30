@@ -25,4 +25,208 @@ export const GlobalStyles = createGlobalStyle`
     display: flex;
     flex-direction: column;
   }
+
+  /* ==========================================================================
+     ✨ VENTANAS FLOTANTES Y ALERTAS MODERNAS (SWEETALERT2 DARK GLASSMORPHISM)
+     ========================================================================== */
+  .swal2-container {
+    z-index: 999999 !important;
+    backdrop-filter: blur(8px) !important;
+    -webkit-backdrop-filter: blur(8px) !important;
+    background: rgba(8, 12, 22, 0.78) !important;
+  }
+
+  .swal2-popup.pozo-swal-popup,
+  .swal2-popup {
+    background: #111a2e !important;
+    background: linear-gradient(145deg, rgba(22, 33, 56, 0.98) 0%, rgba(13, 20, 36, 0.98) 100%) !important;
+    backdrop-filter: blur(20px) !important;
+    -webkit-backdrop-filter: blur(20px) !important;
+    border: 1px solid rgba(0, 195, 255, 0.28) !important;
+    border-radius: 20px !important;
+    box-shadow: 0 25px 60px -15px rgba(0, 0, 0, 0.85), 0 0 30px rgba(0, 195, 255, 0.2) !important;
+    padding: 30px 24px 26px 24px !important;
+    max-width: 480px !important;
+    width: 90% !important;
+    font-family: inherit !important;
+    color: #f8fafc !important;
+  }
+
+  .swal2-title.pozo-swal-title,
+  .swal2-title {
+    color: #ffffff !important;
+    font-size: 1.45rem !important;
+    font-weight: 700 !important;
+    letter-spacing: -0.02em !important;
+    padding: 14px 10px 8px 10px !important;
+    margin: 0 !important;
+  }
+
+  .swal2-html-container.pozo-swal-html,
+  .swal2-html-container {
+    margin: 0 !important;
+    padding: 0 !important;
+    color: #cbd5e1 !important;
+    font-size: 1rem !important;
+    line-height: 1.6 !important;
+  }
+
+  .pozo-alert-body {
+    color: #cbd5e1 !important;
+    font-size: 1rem !important;
+    line-height: 1.6 !important;
+    padding: 8px 12px 18px 12px !important;
+    word-break: break-word !important;
+  }
+
+  .pozo-alert-body strong {
+    color: #ffffff !important;
+    font-weight: 600 !important;
+  }
+
+  .swal2-actions,
+  .pozo-swal-actions {
+    display: flex !important;
+    justify-content: center !important;
+    align-items: center !important;
+    gap: 16px !important;
+    width: 100% !important;
+    margin: 20px auto 4px auto !important;
+    padding: 0 !important;
+  }
+
+  .swal2-confirm,
+  .pozo-swal-confirm-btn {
+    background: linear-gradient(135deg, #00c3ff 0%, #0072ff 100%) !important;
+    color: #ffffff !important;
+    font-family: inherit !important;
+    font-weight: 600 !important;
+    font-size: 0.98rem !important;
+    letter-spacing: 0.3px !important;
+    padding: 12px 36px !important;
+    min-width: 140px !important;
+    border-radius: 12px !important;
+    border: none !important;
+    cursor: pointer !important;
+    outline: none !important;
+    box-shadow: 0 4px 18px rgba(0, 195, 255, 0.4) !important;
+    transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1) !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    text-decoration: none !important;
+  }
+
+  .swal2-confirm:hover,
+  .pozo-swal-confirm-btn:hover {
+    transform: translateY(-2px) !important;
+    box-shadow: 0 8px 26px rgba(0, 195, 255, 0.6) !important;
+    filter: brightness(1.1) !important;
+  }
+
+  .pozo-swal-danger-btn {
+    background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%) !important;
+    color: #ffffff !important;
+    font-family: inherit !important;
+    font-weight: 600 !important;
+    font-size: 0.98rem !important;
+    letter-spacing: 0.3px !important;
+    padding: 12px 32px !important;
+    min-width: 140px !important;
+    border-radius: 12px !important;
+    border: none !important;
+    cursor: pointer !important;
+    outline: none !important;
+    box-shadow: 0 4px 18px rgba(239, 68, 68, 0.4) !important;
+    transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1) !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+  }
+
+  .pozo-swal-danger-btn:hover {
+    transform: translateY(-2px) !important;
+    box-shadow: 0 8px 24px rgba(239, 68, 68, 0.6) !important;
+    filter: brightness(1.1) !important;
+  }
+
+  .swal2-cancel,
+  .pozo-swal-cancel-btn {
+    background: rgba(255, 255, 255, 0.08) !important;
+    color: #cbd5e1 !important;
+    font-family: inherit !important;
+    font-weight: 500 !important;
+    font-size: 0.98rem !important;
+    padding: 12px 28px !important;
+    min-width: 120px !important;
+    border-radius: 12px !important;
+    border: 1px solid rgba(255, 255, 255, 0.15) !important;
+    cursor: pointer !important;
+    outline: none !important;
+    transition: all 0.2s ease !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+  }
+
+  .swal2-cancel:hover,
+  .pozo-swal-cancel-btn:hover {
+    background: rgba(255, 255, 255, 0.16) !important;
+    color: #ffffff !important;
+    border-color: rgba(255, 255, 255, 0.3) !important;
+  }
+
+  .swal2-close.pozo-swal-close-btn,
+  .swal2-close {
+    color: #64748b !important;
+    font-size: 28px !important;
+    line-height: 1 !important;
+    top: 14px !important;
+    right: 14px !important;
+    transition: color 0.2s ease !important;
+  }
+
+  .swal2-close:hover {
+    color: #ffffff !important;
+  }
+
+  .swal2-icon.swal2-success {
+    border-color: #10b981 !important;
+    color: #10b981 !important;
+    margin: 10px auto 4px auto !important;
+  }
+  .swal2-icon.swal2-success [class^='swal2-success-line'] {
+    background-color: #10b981 !important;
+  }
+  .swal2-icon.swal2-success .swal2-success-ring {
+    border: 4px solid rgba(16, 185, 129, 0.3) !important;
+  }
+
+  .swal2-icon.swal2-warning {
+    border-color: #f59e0b !important;
+    color: #f59e0b !important;
+    margin: 10px auto 4px auto !important;
+  }
+
+  .swal2-icon.swal2-error {
+    border-color: #ef4444 !important;
+    color: #ef4444 !important;
+    margin: 10px auto 4px auto !important;
+  }
+  .swal2-icon.swal2-error [class^='swal2-x-mark-line'] {
+    background-color: #ef4444 !important;
+  }
+
+  .swal2-icon.swal2-question,
+  .swal2-icon.swal2-info {
+    border-color: #00c3ff !important;
+    color: #00c3ff !important;
+    margin: 10px auto 4px auto !important;
+  }
+
+  .swal2-timer-progress-bar.pozo-swal-progress,
+  .swal2-timer-progress-bar {
+    background: linear-gradient(90deg, #00c3ff, #0072ff) !important;
+    height: 3px !important;
+  }
 `;

@@ -1,5 +1,6 @@
 import Swal from "sweetalert2";
 import "sweetalert2/dist/sweetalert2.min.css";
+import "../styles/alerts.css";
 
 /**
  * Detecta el tipo de alerta e icono a partir del contenido del mensaje
@@ -99,7 +100,7 @@ export function mostrarAlerta(mensaje, opciones = {}) {
     color: "#f8fafc",
     backdrop: "rgba(11, 15, 25, 0.75)",
     buttonsStyling: false,
-    confirmButtonText: "Entendido",
+    confirmButtonText: opciones.confirmButtonText || "Aceptar",
     timer,
     timerProgressBar: Boolean(timer),
     showCloseButton: true,
@@ -107,6 +108,7 @@ export function mostrarAlerta(mensaje, opciones = {}) {
       popup: "pozo-swal-popup",
       title: "pozo-swal-title",
       htmlContainer: "pozo-swal-html",
+      actions: "pozo-swal-actions",
       confirmButton: "pozo-swal-confirm-btn",
       cancelButton: "pozo-swal-cancel-btn",
       timerProgressBar: "pozo-swal-progress",
@@ -176,6 +178,7 @@ export async function confirmarAccion({
       popup: "pozo-swal-popup",
       title: "pozo-swal-title",
       htmlContainer: "pozo-swal-html",
+      actions: "pozo-swal-actions",
       confirmButton: esPeligroso ? "pozo-swal-danger-btn" : "pozo-swal-confirm-btn",
       cancelButton: "pozo-swal-cancel-btn",
       closeButton: "pozo-swal-close-btn",
