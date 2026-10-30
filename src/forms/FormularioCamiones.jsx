@@ -100,11 +100,10 @@ export function FormularioCamiones({ onCamionAgregado }) {
               if (t.camionero_id) {
                 return String(t.camionero_id) === String(c.id);
               }
-              // Enlazar únicamente por nombre de chofer si camionero_id es null (nunca por perfil_id compartido)
-              return (
-                t.chofer &&
-                t.chofer.toLowerCase().trim() === c.nombre.toLowerCase().trim()
-              );
+              if (c.perfil_id && t.perfil_id) {
+                return String(t.perfil_id) === String(c.perfil_id);
+              }
+              return false;
             }).length;
             return { ...c, totalCamiones: count };
           });
@@ -173,33 +172,40 @@ export function FormularioCamiones({ onCamionAgregado }) {
         }
 
         const cedulaLimpia = nuevaCedula.trim().replace(/\D/g, "");
-        if (nuevaCedula.trim()) {
-          if (!/^\d{5,8}$/.test(cedulaLimpia)) {
-            alert("⚠️ La cédula de identidad del chofer debe contener únicamente números y tener entre 5 y 8 dígitos.");
-            setCargando(false);
-            return;
-          }
+        if (!cedulaLimpia || !/^\d{5,8}$/.test(cedulaLimpia)) {
+          alert("⚠️ La Cédula de Identidad del chofer es obligatoria (debe contener entre 5 y 8 números).");
+          setCargando(false);
+          return;
+        }
+
+        // Verificar unicidad en camioneros
+        const { data: choferConCedula } = await supabase
+          .from("camioneros")
+          .select("id, nombre, cedula")
+          .eq("cedula", cedulaLimpia)
+          .maybeSingle();
+
+        if (choferConCedula) {
+          alert(`⚠️ Ya existe un chofer registrado con la Cédula ${cedulaLimpia} ("${choferConCedula.nombre}"). Selecciona al chofer existente en la lista.`);
+          setCargando(false);
+          return;
         }
 
         choferNombre = nuevoNombre.trim();
 
-        // 1. Buscar si ya existe un perfil en perfiles con ese nombre o cédula
+        // 1. Buscar si ya existe un perfil en perfiles con esa CÉDULA (nunca por nombre)
         try {
-          let orQuery = `nombre.ilike."${choferNombre}"`;
-          if (cedulaLimpia) {
-            orQuery = `cedula.eq."${cedulaLimpia}",nombre.ilike."${choferNombre}"`;
-          }
           const { data: perfilExistente } = await supabase
             .from("perfiles")
-            .select("id")
-            .or(orQuery)
+            .select("id, nombre, cedula")
+            .eq("cedula", cedulaLimpia)
             .maybeSingle();
 
           if (perfilExistente) {
             perfilId = perfilExistente.id;
           }
         } catch (ePerf) {
-          console.warn("Búsqueda de perfil existente:", ePerf);
+          console.warn("Búsqueda de perfil existente por cédula:", ePerf);
         }
 
         // 📞 Validación de Teléfono (Venezuela: 11 dígitos, ej: 04141234567)
@@ -418,7 +424,7 @@ export function FormularioCamiones({ onCamionAgregado }) {
 
               <FieldBox>
                 <label>
-                  <MdBadge className="field-icon" /> Cédula de Identidad:
+                  <MdBadge className="field-icon" /> Cédula de Identidad: *
                 </label>
                 <input
                   type="text"
@@ -428,9 +434,10 @@ export function FormularioCamiones({ onCamionAgregado }) {
                   placeholder="Ej: 18456789 (máx. 8 dígitos)"
                   value={nuevaCedula}
                   onChange={(e) => setNuevaCedula(e.target.value.replace(/\D/g, "").slice(0, 8))}
+                  required
                 />
                 <small style={{ color: "#94a3b8", fontSize: "11px", marginTop: "4px", display: "block" }}>
-                  ℹ️ Solo números, máximo 8 dígitos (sin letras 'V-' ni guiones).
+                  ℹ️ Requerido, solo números, máx. 8 dígitos (único).
                 </small>
               </FieldBox>
 

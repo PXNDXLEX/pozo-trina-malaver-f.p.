@@ -102,20 +102,11 @@ export function FormularioUsuario({ onUsuarioRegistrado }) {
       const choferObj = listaCamioneros.find((c) => String(c.id) === String(choferId));
       if (!choferObj) return;
 
-      // Buscar camiones vinculados estrictamente a este chofer (por camionero_id o por nombre de chofer)
-      let { data } = await supabase
+      // Buscar camiones vinculados estrictamente a este chofer por camionero_id
+      const { data } = await supabase
         .from("camiones")
         .select("id, placa, capacidad, modelo")
         .eq("camionero_id", choferId);
-
-      // Si los camiones no tienen camionero_id asignado aún en la BD, buscar por nombre del chofer
-      if ((!data || data.length === 0) && choferObj.nombre) {
-        const { data: dataPorNombre } = await supabase
-          .from("camiones")
-          .select("id, placa, capacidad, modelo")
-          .ilike("chofer", choferObj.nombre.trim());
-        data = dataPorNombre;
-      }
 
       setCamionesDelChofer(data || []);
     } catch (err) {
@@ -345,20 +336,12 @@ export function FormularioUsuario({ onUsuarioRegistrado }) {
               console.warn("Fallo al actualizar perfil_id en camioneros:", errCamioneroLink);
             }
 
-            // Actualizar todos los camiones existentes de este chofer para sincronizar perfil_id y camionero_id
+            // Actualizar todos los camiones existentes de este chofer para sincronizar perfil_id
             try {
               await supabase
                 .from("camiones")
                 .update({ perfil_id: userId, camionero_id: camioneroSeleccionadoId })
                 .eq("camionero_id", camioneroSeleccionadoId);
-
-              const choferObj = listaCamioneros.find((c) => String(c.id) === String(camioneroSeleccionadoId));
-              if (choferObj?.nombre) {
-                await supabase
-                  .from("camiones")
-                  .update({ perfil_id: userId, camionero_id: camioneroSeleccionadoId })
-                  .ilike("chofer", choferObj.nombre.trim());
-              }
             } catch (errCamionesLink) {
               console.warn("Fallo al actualizar camiones con perfil_id:", errCamionesLink);
             }
@@ -383,23 +366,15 @@ export function FormularioUsuario({ onUsuarioRegistrado }) {
           } else {
             // Modo nuevo chofer o creación directa
             try {
-              // 1. Verificar si ya existía una ficha en camioneros con esa cédula o nombre para NO duplicarla
+              // 1. Verificar si ya existía una ficha en camioneros con esa CÉDULA únicamente (nunca por nombre)
               let choferExistente = null;
               if (cedulaLimpia) {
                 const { data: porCedula } = await supabase
                   .from("camioneros")
-                  .select("id, nombre")
+                  .select("id, nombre, cedula")
                   .eq("cedula", cedulaLimpia)
                   .maybeSingle();
                 if (porCedula) choferExistente = porCedula;
-              }
-              if (!choferExistente && nombre.trim()) {
-                const { data: porNombre } = await supabase
-                  .from("camioneros")
-                  .select("id, nombre")
-                  .ilike("nombre", nombre.trim())
-                  .maybeSingle();
-                if (porNombre) choferExistente = porNombre;
               }
 
               if (choferExistente) {

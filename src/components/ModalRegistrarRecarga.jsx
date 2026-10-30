@@ -92,12 +92,24 @@ export function ModalRegistrarRecarga({ isOpen, onClose, onRecargaExitosa }) {
         const trucksMap = new Map();
 
         try {
-          // Buscar ficha del chofer
-          const { data: cRow } = await supabase
+          // Buscar ficha del chofer por perfil_id o por cédula
+          const { data: cRowData } = await supabase
             .from("camioneros")
             .select("id, nombre, cedula, telefono, perfil_id")
             .eq("perfil_id", user.id)
             .maybeSingle();
+
+          let cRow = cRowData;
+          if (!cRow && user?.cedula) {
+            const { data: cByCed } = await supabase
+              .from("camioneros")
+              .select("id, nombre, cedula, telefono, perfil_id")
+              .eq("cedula", user.cedula.trim())
+              .maybeSingle();
+            if (cByCed) {
+              cRow = cByCed;
+            }
+          }
 
           if (cRow) {
             setChoferSeleccionado(cRow);
@@ -131,22 +143,6 @@ export function ModalRegistrarRecarga({ isOpen, onClose, onRecargaExitosa }) {
               trucksMap.set(t.id, t);
             }
           });
-
-          // Camiones por coincidencia de nombre
-          const nombreChofer = cRow?.nombre || user?.nombre;
-          if (nombreChofer && !nombreChofer.toLowerCase().includes("sin")) {
-            const { data: byNombre } = await supabase
-              .from("camiones")
-              .select("id, placa, chofer, capacidad, modelo, perfil_id, camionero_id")
-              .ilike("chofer", nombreChofer.trim());
-
-            (byNombre || []).forEach((t) => {
-              const choferStr = (t.chofer || "").trim().toLowerCase();
-              if (!choferStr.includes("sin")) {
-                trucksMap.set(t.id, t);
-              }
-            });
-          }
         } catch (errCam) {
           console.error("Error al cargar camiones de chofer:", errCam);
         }
@@ -225,9 +221,8 @@ export function ModalRegistrarRecarga({ isOpen, onClose, onRecargaExitosa }) {
 
       const matchId = t.camionero_id && String(t.camionero_id) === String(ch.id);
       const matchPerfil = ch.perfil_id && t.perfil_id === ch.perfil_id;
-      const matchNombre = ch.nombre && choferStr === ch.nombre.trim().toLowerCase();
 
-      if (matchId || matchPerfil || matchNombre) {
+      if (matchId || matchPerfil) {
         mapa.set(t.id, t);
       }
     });
@@ -314,12 +309,10 @@ export function ModalRegistrarRecarga({ isOpen, onClose, onRecargaExitosa }) {
       return;
     }
 
-    if (nuevoChoferCedula.trim()) {
-      const cedLimpia = nuevoChoferCedula.trim().replace(/\D/g, "");
-      if (!/^\d{5,8}$/.test(cedLimpia)) {
-        alert("⚠️ El número de cédula debe contener únicamente números y tener entre 5 y 8 dígitos.");
-        return;
-      }
+    const cedLimpia = nuevoChoferCedula.trim().replace(/\D/g, "");
+    if (!cedLimpia || !/^\d{5,8}$/.test(cedLimpia)) {
+      alert("⚠️ La Cédula de Identidad es obligatoria para registrar al chofer (debe contener entre 5 y 8 números).");
+      return;
     }
 
     const regexTelefonoVE = /^(0414|0424|0412|0422|0416|0426|02\d{2})\d{7}$/;
@@ -333,7 +326,33 @@ export function ModalRegistrarRecarga({ isOpen, onClose, onRecargaExitosa }) {
 
     setGuardandoInline(true);
     try {
-      const cedulaFinal = nuevoChoferCedula.trim().replace(/\D/g, "").slice(0, 8) || null;
+      // 1. Verificar unicidad de cédula en camioneros
+      const { data: choferConCedula } = await supabase
+        .from("camioneros")
+        .select("id, nombre, cedula")
+        .eq("cedula", cedLimpia)
+        .maybeSingle();
+
+      if (choferConCedula) {
+        alert(`⚠️ Ya existe un chofer registrado con la Cédula ${cedLimpia} ("${choferConCedula.nombre}"). Las cédulas deben ser únicas entre choferes.`);
+        setGuardandoInline(false);
+        return;
+      }
+
+      // 2. Verificar unicidad de cédula en perfiles
+      const { data: usuarioConCedula } = await supabase
+        .from("perfiles")
+        .select("id, nombre, cedula")
+        .eq("cedula", cedLimpia)
+        .maybeSingle();
+
+      if (usuarioConCedula) {
+        alert(`⚠️ Ya existe un usuario en el sistema con la Cédula ${cedLimpia} ("${usuarioConCedula.nombre}"). Las cédulas no pueden duplicarse.`);
+        setGuardandoInline(false);
+        return;
+      }
+
+      const cedulaFinal = cedLimpia.slice(0, 8);
       const { data, error } = await supabase
         .from("camioneros")
         .insert([
@@ -682,7 +701,7 @@ export function ModalRegistrarRecarga({ isOpen, onClose, onRecargaExitosa }) {
                       />
                     </div>
                     <div>
-                      <label>Cédula de Identidad:</label>
+                      <label>Cédula de Identidad: *</label>
                       <input
                         type="text"
                         inputMode="numeric"
@@ -691,9 +710,10 @@ export function ModalRegistrarRecarga({ isOpen, onClose, onRecargaExitosa }) {
                         placeholder="Ej: 12345678 (máx. 8 dígitos)"
                         value={nuevoChoferCedula}
                         onChange={(e) => setNuevoChoferCedula(e.target.value.replace(/\D/g, "").slice(0, 8))}
+                        required
                       />
                       <small style={{ color: "#94a3b8", fontSize: "11px", marginTop: "2px", display: "block" }}>
-                        ℹ️ Solo números, máximo 8 dígitos
+                        ℹ️ Requerido, solo números, máx. 8 dígitos (único)
                       </small>
                     </div>
                     <div>
@@ -754,8 +774,7 @@ export function ModalRegistrarRecarga({ isOpen, onClose, onRecargaExitosa }) {
                       if (choferStr.includes("sin")) return false;
                       const matchId = t.camionero_id && String(t.camionero_id) === String(ch.id);
                       const matchPerfil = ch.perfil_id && t.perfil_id === ch.perfil_id;
-                      const matchNombre = ch.nombre && choferStr === ch.nombre.trim().toLowerCase();
-                      return matchId || matchPerfil || matchNombre;
+                      return matchId || matchPerfil;
                     }).length;
 
                     return (

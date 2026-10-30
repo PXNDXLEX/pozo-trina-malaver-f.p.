@@ -66,11 +66,23 @@ export function CuentasPorCobrar() {
         const idsSet = new Set();
 
         try {
-          const { data: cRow } = await supabase
+          const { data: cRowData } = await supabase
             .from("camioneros")
-            .select("id, nombre")
+            .select("id, nombre, cedula")
             .eq("perfil_id", user.id)
             .maybeSingle();
+
+          let cRow = cRowData;
+          if (!cRow && user?.cedula) {
+            const { data: cByCed } = await supabase
+              .from("camioneros")
+              .select("id, nombre, cedula")
+              .eq("cedula", user.cedula.trim())
+              .maybeSingle();
+            if (cByCed) {
+              cRow = cByCed;
+            }
+          }
 
           // 1. Por camionero_id
           if (cRow?.id) {
@@ -100,22 +112,6 @@ export function CuentasPorCobrar() {
               idsSet.add(c.id);
             }
           });
-
-          // 3. Por nombre de chofer o usuario
-          const nombreChofer = cRow?.nombre || user?.nombre;
-          if (nombreChofer && !nombreChofer.toLowerCase().includes("sin")) {
-            const { data: byNombre } = await supabase
-              .from("camiones")
-              .select("id, chofer")
-              .ilike("chofer", nombreChofer.trim());
-
-            (byNombre || []).forEach((c) => {
-              const choferStr = (c.chofer || "").trim().toLowerCase();
-              if (!choferStr.includes("sin")) {
-                idsSet.add(c.id);
-              }
-            });
-          }
         } catch (e) {
           console.error("Error al obtener camiones de cobranza:", e);
         }

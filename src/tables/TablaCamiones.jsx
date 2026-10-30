@@ -170,17 +170,12 @@ export function TablaCamiones() {
     setModalCapacidad(camion.capacidad || "");
     setModalModelo(camion.modelo || "");
 
-    // Buscar si ya tiene camionero_id, perfil_id o si coincide por nombre
+    // Buscar si ya tiene camionero_id o perfil_id
     let chId = "";
     if (camion.camionero_id) {
       chId = String(camion.camionero_id);
     } else if (camion.perfil_id) {
       const match = listaCamioneros.find((c) => c.perfil_id === camion.perfil_id);
-      if (match) chId = String(match.id);
-    } else if (camion.chofer) {
-      const match = listaCamioneros.find(
-        (c) => c.nombre?.trim().toLowerCase() === camion.chofer?.trim().toLowerCase()
-      );
       if (match) chId = String(match.id);
     }
 
@@ -275,12 +270,36 @@ export function TablaCamiones() {
         }
 
         const cedulaLimpia = nuevoChoferCedula.trim().replace(/\D/g, "");
-        if (nuevoChoferCedula.trim()) {
-          if (!/^\d{5,8}$/.test(cedulaLimpia)) {
-            alert("⚠️ La cédula de identidad del nuevo chofer debe contener únicamente números y tener entre 5 y 8 dígitos.");
-            setGuardando(false);
-            return;
-          }
+        if (!cedulaLimpia || !/^\d{5,8}$/.test(cedulaLimpia)) {
+          alert("⚠️ La Cédula de Identidad del nuevo chofer es obligatoria (debe contener entre 5 y 8 números).");
+          setGuardando(false);
+          return;
+        }
+
+        // Verificar unicidad en camioneros
+        const { data: choferConCedula } = await supabase
+          .from("camioneros")
+          .select("id, nombre, cedula")
+          .eq("cedula", cedulaLimpia)
+          .maybeSingle();
+
+        if (choferConCedula) {
+          alert(`⚠️ Ya existe un chofer registrado con la Cédula ${cedulaLimpia} ("${choferConCedula.nombre}"). Selecciona al chofer existente en la lista.`);
+          setGuardando(false);
+          return;
+        }
+
+        // Verificar unicidad en perfiles
+        const { data: usuarioConCedula } = await supabase
+          .from("perfiles")
+          .select("id, nombre, cedula")
+          .eq("cedula", cedulaLimpia)
+          .maybeSingle();
+
+        if (usuarioConCedula) {
+          alert(`⚠️ Ya existe un usuario en el sistema con la Cédula ${cedulaLimpia} ("${usuarioConCedula.nombre}"). Las cédulas no pueden duplicarse.`);
+          setGuardando(false);
+          return;
         }
 
         const regexTelefonoVE = /^(0414|0424|0412|0422|0416|0426|02\d{2})\d{7}$/;
@@ -799,8 +818,7 @@ export function TablaCamiones() {
                               if (choferStr.includes("sin")) return false;
                               const matchCamId = t.camionero_id && String(t.camionero_id) === String(ch.id);
                               const matchPerfil = ch.perfil_id && t.perfil_id === ch.perfil_id;
-                              const matchNombre = ch.nombre && choferStr === ch.nombre.trim().toLowerCase();
-                              return matchCamId || matchPerfil || matchNombre;
+                              return matchCamId || matchPerfil;
                             }).length;
 
                             return (
@@ -872,7 +890,7 @@ export function TablaCamiones() {
                         </FormField>
 
                         <FormField>
-                          <label>Cédula de Identidad:</label>
+                          <label>Cédula de Identidad: *</label>
                           <input
                             type="text"
                             inputMode="numeric"
@@ -881,9 +899,10 @@ export function TablaCamiones() {
                             placeholder="Ej: 14523698 (máx. 8 dígitos)"
                             value={nuevoChoferCedula}
                             onChange={(e) => setNuevoChoferCedula(e.target.value.replace(/\D/g, "").slice(0, 8))}
+                            required={creandoNuevoChofer}
                           />
                           <small style={{ color: "#94a3b8", fontSize: "11px", marginTop: "2px", display: "block" }}>
-                            ℹ️ Solo números, máximo 8 dígitos
+                            ℹ️ Requerido, solo números, máx. 8 dígitos (único)
                           </small>
                         </FormField>
 

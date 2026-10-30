@@ -48,15 +48,25 @@ export function TablaDetcon({ refresh }) {
     try {
       const { data: cRow } = await supabase
         .from("camioneros")
-        .select("id, nombre")
+        .select("id, nombre, cedula")
         .eq("perfil_id", user.id)
         .maybeSingle();
 
-      if (cRow?.id) {
+      let finalCRow = cRow;
+      if (!finalCRow && user?.cedula) {
+        const { data: cByCed } = await supabase
+          .from("camioneros")
+          .select("id, nombre, cedula")
+          .eq("cedula", user.cedula.trim())
+          .maybeSingle();
+        if (cByCed) finalCRow = cByCed;
+      }
+
+      if (finalCRow?.id) {
         const { data: pCam } = await supabase
           .from("camiones")
           .select("id")
-          .eq("camionero_id", cRow.id);
+          .eq("camionero_id", finalCRow.id);
         (pCam || []).forEach((t) => idsSet.add(t.id));
       }
 
@@ -65,15 +75,6 @@ export function TablaDetcon({ refresh }) {
         .select("id")
         .eq("perfil_id", user.id);
       (pPerf || []).forEach((t) => idsSet.add(t.id));
-
-      const nombreChofer = cRow?.nombre || user?.nombre || user?.name;
-      if (nombreChofer && !nombreChofer.toLowerCase().includes("sin")) {
-        const { data: pNom } = await supabase
-          .from("camiones")
-          .select("id")
-          .ilike("chofer", nombreChofer.trim());
-        (pNom || []).forEach((t) => idsSet.add(t.id));
-      }
     } catch (e) {
       console.warn("Error resolviendo camiones en TablaDetcon:", e);
     }

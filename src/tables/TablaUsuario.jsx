@@ -107,21 +107,10 @@ export function TablaUsuario() {
       }
 
       // Buscar también por coincidencia de nombre de chofer
-      const nombreLimpio = (nombre || "").trim();
-      let camionesPorChofer = [];
-      if (nombreLimpio) {
-        const { data: cByChofer } = await supabase
-          .from("camiones")
-          .select("id, placa, chofer, perfil_id, camionero_id")
-          .ilike("chofer", `%${nombreLimpio}%`);
-        camionesPorChofer = cByChofer || [];
-      }
-
       // Unificar camiones sin duplicados
       const mapCamiones = new Map();
       (camionesPorPerfil || []).forEach((c) => mapCamiones.set(c.id, c));
       (camionesPorCamioneroId || []).forEach((c) => mapCamiones.set(c.id, c));
-      (camionesPorChofer || []).forEach((c) => mapCamiones.set(c.id, c));
       const camionesAsociados = Array.from(mapCamiones.values());
 
       let mensaje = `¿Estás seguro de que deseas eliminar al usuario <strong>"${nombre}"</strong>?`;
@@ -152,9 +141,6 @@ export function TablaUsuario() {
       // 3. Eliminar fichas en la tabla camioneros si existen
       if (camioneroIds.length > 0) {
         await supabase.from("camioneros").delete().in("id", camioneroIds);
-      }
-      if (nombreLimpio) {
-        await supabase.from("camioneros").delete().ilike("nombre", `%${nombreLimpio}%`);
       }
 
       // 4. Eliminar el perfil del usuario
@@ -305,13 +291,11 @@ export function TablaUsuario() {
         console.warn("Tabla camiones no disponible:", errCamiones);
       }
 
-      // 2. Buscar si este usuario ya tiene una ficha en camioneros enlazada
-      // Detectar y fusionar automáticamente duplicados si existen múltiples fichas para el mismo chofer
+      // 2. Buscar si este usuario ya tiene una ficha en camioneros enlazada (estrictamente por perfil_id o cédula)
       const matchesChofer = (todosChoferes || []).filter((c) => {
         const matchPerfil = c.perfil_id === usr.id;
         const matchCedula = usr.cedula && c.cedula && c.cedula.trim() === usr.cedula.trim();
-        const matchNombre = usr.nombre && c.nombre && c.nombre.trim().toLowerCase() === usr.nombre.trim().toLowerCase();
-        return matchPerfil || matchCedula || matchNombre;
+        return matchPerfil || matchCedula;
       });
 
       let foundCamionero = null;
@@ -386,22 +370,6 @@ export function TablaUsuario() {
         }
       }
 
-      // Auto-sincronización de camiones legítimos con el nombre del chofer
-      if (foundCamioneroId && foundCamionero?.nombre) {
-        try {
-          const nombreValido = foundCamionero.nombre.trim();
-          if (nombreValido && !nombreValido.toLowerCase().includes("sin")) {
-            await supabase
-              .from("camiones")
-              .update({ camionero_id: foundCamioneroId, perfil_id: usr.id, chofer: nombreValido })
-              .ilike("chofer", nombreValido)
-              .is("camionero_id", null);
-          }
-        } catch (eSync) {
-          console.warn("Auto-sync camiones:", eSync);
-        }
-      }
-
       // 3. Filtrar Choferes Disponibles:
       // REGLA: Si este camionero ya está asignado a un usuario (perfil_id no nulo y distinto a usr.id), NO DEBE APARECER EN LA LISTA
       const listaDisponibles = (todosChoferes || [])
@@ -412,8 +380,7 @@ export function TablaUsuario() {
             if (choferStr.includes("sin")) return false;
             const matchCamId = t.camionero_id && String(t.camionero_id) === String(c.id);
             const matchPerfil = c.perfil_id && t.perfil_id === c.perfil_id;
-            const matchNombre = c.nombre && choferStr === c.nombre.trim().toLowerCase();
-            return matchCamId || matchPerfil || matchNombre;
+            return matchCamId || matchPerfil;
           }).length;
           return {
             ...c,
@@ -434,11 +401,9 @@ export function TablaUsuario() {
         if (esTextoSin) return;
 
         const matchesCamioneroId = foundCamioneroId && String(t.camionero_id) === String(foundCamioneroId);
-        const matchesNombreChofer = foundCamionero?.nombre && choferStr === foundCamionero.nombre.trim().toLowerCase();
-        const matchesNombreUsuario = usr?.nombre && choferStr === usr.nombre.trim().toLowerCase();
         const matchesPerfilId = usr?.id && t.perfil_id === usr.id && (!t.camionero_id || String(t.camionero_id) === String(foundCamioneroId));
 
-        if (matchesCamioneroId || matchesNombreChofer || matchesNombreUsuario || matchesPerfilId) {
+        if (matchesCamioneroId || matchesPerfilId) {
           trucksMap.set(t.id, t);
         }
       });
@@ -503,20 +468,6 @@ export function TablaUsuario() {
           .select("id, placa, capacidad, modelo, chofer, camionero_id, perfil_id")
           .eq("perfil_id", ch.perfil_id);
         (byPerfil || []).forEach((t) => {
-          const choferStr = (t.chofer || "").trim().toLowerCase();
-          if (!choferStr.includes("sin")) {
-            trucksMap.set(t.id, t);
-          }
-        });
-      }
-
-      // Por coincidencia de nombre de chofer
-      if (ch.nombre) {
-        const { data: byNombre } = await supabase
-          .from("camiones")
-          .select("id, placa, capacidad, modelo, chofer, camionero_id, perfil_id")
-          .ilike("chofer", ch.nombre.trim());
-        (byNombre || []).forEach((t) => {
           const choferStr = (t.chofer || "").trim().toLowerCase();
           if (!choferStr.includes("sin")) {
             trucksMap.set(t.id, t);
@@ -676,6 +627,19 @@ export function TablaUsuario() {
 
       if (cedulaExistente) {
         alert(`⚠️ El número de cédula ${cedulaLimpia} ya está asignado a otro usuario ("${cedulaExistente.nombre || "Usuario"}"). Las cédulas deben ser únicas.`);
+        setGuardandoModalCamionero(false);
+        return;
+      }
+
+      // Verificar si la cédula ya existe en camioneros (para otra ficha)
+      const { data: choferConCedula } = await supabase
+        .from("camioneros")
+        .select("id, nombre, cedula")
+        .eq("cedula", cedulaLimpia)
+        .maybeSingle();
+
+      if (choferConCedula && (!finalCamioneroId || String(choferConCedula.id) !== String(finalCamioneroId))) {
+        alert(`⚠️ El número de cédula ${cedulaLimpia} ya está asignado al chofer "${choferConCedula.nombre}". Las cédulas deben ser únicas.`);
         setGuardandoModalCamionero(false);
         return;
       }

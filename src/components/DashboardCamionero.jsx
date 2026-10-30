@@ -55,16 +55,15 @@ export function DashboardCamionero() {
             .eq("perfil_id", user.id)
             .maybeSingle();
 
-          // Si no está vinculado por perfil_id, buscar por coincidencia de nombre
-          if (!camioneroRow?.id && (user?.name || user?.nombre)) {
-            const nomLimpio = (user?.name || user?.nombre || "").trim();
-            const { data: cByName } = await supabase
+          // Si no está vinculado por perfil_id, buscar por coincidencia de cédula
+          if (!camioneroRow?.id && user?.cedula) {
+            const { data: cByCed } = await supabase
               .from("camioneros")
-              .select("id, nombre")
-              .ilike("nombre", nomLimpio)
+              .select("id, nombre, cedula")
+              .eq("cedula", user.cedula.trim())
               .maybeSingle();
-            if (cByName?.id) {
-              camioneroRow = cByName;
+            if (cByCed?.id) {
+              camioneroRow = cByCed;
             }
           }
 
@@ -95,22 +94,6 @@ export function DashboardCamionero() {
               trucksMap.set(t.id, t);
             }
           });
-
-          // 4. Camiones por coincidencia de nombre de chofer o usuario
-          const nombreChofer = camioneroRow?.nombre || user?.nombre || user?.name;
-          if (nombreChofer && !nombreChofer.toLowerCase().includes("sin")) {
-            const { data: byNombre } = await supabase
-              .from("camiones")
-              .select("id, placa, chofer, capacidad, modelo, perfil_id, camionero_id")
-              .ilike("chofer", nombreChofer.trim());
-
-            (byNombre || []).forEach((t) => {
-              const choferStr = (t.chofer || "").trim().toLowerCase();
-              if (!choferStr.includes("sin")) {
-                trucksMap.set(t.id, t);
-              }
-            });
-          }
         } catch (errCamioneros) {
           console.error("Error al cargar camiones en dashboard:", errCamioneros);
         }
