@@ -680,6 +680,17 @@ export function TablaUsuario() {
         return;
       }
 
+      // 📞 Validación de Teléfono (Venezuela: 11 dígitos, ej: 04141234567)
+      const regexTelefonoVE = /^(0414|0424|0412|0416|0426|02\d{2})\d{7}$/;
+      const tlfLimpio = modalTelefono.trim().replace(/\D/g, "");
+      if (tlfLimpio) {
+        if (!regexTelefonoVE.test(tlfLimpio)) {
+          alert("⚠️ El número de teléfono debe ser válido en Venezuela (11 dígitos comenzando por 0414, 0424, 0412, 0416, 0426 o 02xx, ej: 04141234567).");
+          setGuardandoModalCamionero(false);
+          return;
+        }
+      }
+
       // 4. Actualizar tabla perfiles
       const { error: errPerfil } = await supabase
         .from("perfiles")
@@ -709,7 +720,7 @@ export function TablaUsuario() {
           .update({
             nombre: modalNombre.trim(),
             cedula: cedulaLimpia,
-            telefono: modalTelefono.trim() || null,
+            telefono: tlfLimpio || null,
             perfil_id: userId,
           })
           .eq("id", finalCamioneroId);
@@ -720,7 +731,7 @@ export function TablaUsuario() {
             {
               nombre: modalNombre.trim(),
               cedula: cedulaLimpia,
-              telefono: modalTelefono.trim() || null,
+              telefono: tlfLimpio || null,
               perfil_id: userId,
             },
           ])
@@ -1098,10 +1109,16 @@ export function TablaUsuario() {
                           <label>Teléfono de Contacto:</label>
                           <input
                             type="text"
-                            placeholder="Ej: 0414-1234567"
+                            inputMode="numeric"
+                            pattern="[0-9]*"
+                            maxLength={11}
+                            placeholder="Ej: 04141234567 (11 dígitos)"
                             value={modalTelefono}
-                            onChange={(e) => setModalTelefono(e.target.value)}
+                            onChange={(e) => setModalTelefono(e.target.value.replace(/\D/g, "").slice(0, 11))}
                           />
+                          <small style={{ color: "#94a3b8", fontSize: "11px", marginTop: "2px", display: "block" }}>
+                            ℹ️ Solo números (11 dígitos, ej: 04141234567)
+                          </small>
                         </FieldItem>
 
                         <FieldItem>

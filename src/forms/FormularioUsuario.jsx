@@ -170,6 +170,43 @@ export function FormularioUsuario({ onUsuarioRegistrado }) {
       console.warn("Error al comprobar cédula única en perfiles:", errCheckCedula);
     }
 
+    // 📧 Validación estricta de Correo Electrónico
+    const emailLimpio = email.trim().toLowerCase();
+    const regexEmail = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+    if (!emailLimpio || !regexEmail.test(emailLimpio)) {
+      alert("⚠️ Por favor ingresa un correo electrónico válido (ejemplo: usuario@correo.com).");
+      setLoading(false);
+      return;
+    }
+
+    // 🔒 Verificar que el correo no esté previamente registrado
+    try {
+      const { data: emailExistente } = await supabase
+        .from("perfiles")
+        .select("id, nombre")
+        .eq("email", emailLimpio)
+        .maybeSingle();
+
+      if (emailExistente) {
+        alert(`⚠️ El correo electrónico "${emailLimpio}" ya está registrado en el sistema para el usuario "${emailExistente.nombre || "Usuario"}".`);
+        setLoading(false);
+        return;
+      }
+    } catch (errCheckEmail) {
+      console.warn("Error al comprobar correo en perfiles:", errCheckEmail);
+    }
+
+    // 📞 Validación de Teléfono (Venezuela: 11 dígitos, ej: 04141234567)
+    const regexTelefonoVE = /^(0414|0424|0412|0416|0426|02\d{2})\d{7}$/;
+    const telefonoLimpio = telefonoChofer.trim().replace(/\D/g, "");
+    if (telefonoLimpio) {
+      if (!regexTelefonoVE.test(telefonoLimpio)) {
+        alert("⚠️ El número de teléfono debe ser válido en Venezuela (11 dígitos comenzando por 0414, 0424, 0412, 0416, 0426 o código de área 02xx, ej: 04141234567).");
+        setLoading(false);
+        return;
+      }
+    }
+
     const regexPlaca = /^[A-Z0-9]{5,8}$/;
 
     // Validaciones si el rol es Camionero
@@ -256,7 +293,7 @@ export function FormularioUsuario({ onUsuarioRegistrado }) {
     try {
       // 1. Crear usuario en Supabase Auth
       const { data: authData, error: authError } = await supabase.auth.signUp({
-        email: email.trim(),
+        email: emailLimpio,
         password: password.trim(),
       });
 
@@ -272,7 +309,7 @@ export function FormularioUsuario({ onUsuarioRegistrado }) {
           id: userId,
           cedula: cedulaLimpia,
           nombre: nombre.trim(),
-          email: email.trim(),
+          email: emailLimpio,
           rol,
           activo: true,
         };
@@ -373,7 +410,7 @@ export function FormularioUsuario({ onUsuarioRegistrado }) {
                   .update({
                     nombre: nombre.trim(),
                     cedula: cedulaLimpia,
-                    telefono: telefonoChofer.trim() || null,
+                    telefono: telefonoLimpio || null,
                     perfil_id: userId,
                   })
                   .eq("id", choferExistente.id);
@@ -391,7 +428,7 @@ export function FormularioUsuario({ onUsuarioRegistrado }) {
                     {
                       nombre: nombre.trim(),
                       cedula: cedulaLimpia,
-                      telefono: telefonoChofer.trim() || null,
+                      telefono: telefonoLimpio || null,
                       perfil_id: userId,
                     },
                   ])
@@ -528,9 +565,12 @@ export function FormularioUsuario({ onUsuarioRegistrado }) {
               type="email"
               placeholder="Ej: usuario@correo.com"
               value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              onChange={(e) => setEmail(e.target.value.trim().toLowerCase())}
               required
             />
+            <small style={{ color: "#94a3b8", fontSize: "11px", marginTop: "4px", display: "block" }}>
+              ℹ️ Formato: nombre@dominio.com
+            </small>
           </FieldBox>
 
           <FieldBox>
@@ -610,10 +650,16 @@ export function FormularioUsuario({ onUsuarioRegistrado }) {
                   </label>
                   <input
                     type="text"
-                    placeholder="Ej: 0414-5556677"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    maxLength={11}
+                    placeholder="Ej: 04141234567 (11 dígitos)"
                     value={telefonoChofer}
-                    onChange={(e) => setTelefonoChofer(e.target.value)}
+                    onChange={(e) => setTelefonoChofer(e.target.value.replace(/\D/g, "").slice(0, 11))}
                   />
+                  <small style={{ color: "#94a3b8", fontSize: "11px", marginTop: "4px", display: "block" }}>
+                    ℹ️ Solo números (11 dígitos): código de operadora (0414, 0424, 0412, 0416, 0426 o 02xx) + 7 dígitos.
+                  </small>
                 </FieldBox>
 
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px" }}>

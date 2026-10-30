@@ -202,6 +202,17 @@ export function FormularioCamiones({ onCamionAgregado }) {
           console.warn("Búsqueda de perfil existente:", ePerf);
         }
 
+        // 📞 Validación de Teléfono (Venezuela: 11 dígitos, ej: 04141234567)
+        const regexTelefonoVE = /^(0414|0424|0412|0416|0426|02\d{2})\d{7}$/;
+        const tlfLimpio = nuevoTelefono.trim().replace(/\D/g, "");
+        if (tlfLimpio) {
+          if (!regexTelefonoVE.test(tlfLimpio)) {
+            alert("⚠️ El número de teléfono del chofer debe ser válido en Venezuela (11 dígitos comenzando por 0414, 0424, 0412, 0416, 0426 o 02xx, ej: 04141234567).");
+            setCargando(false);
+            return;
+          }
+        }
+
         // 2. Insertar nuevo camionero en la tabla camioneros si es posible
         try {
           const { data: newCamionero, error: errNewCam } = await supabase
@@ -210,7 +221,7 @@ export function FormularioCamiones({ onCamionAgregado }) {
               {
                 nombre: choferNombre,
                 cedula: cedulaLimpia || null,
-                telefono: nuevoTelefono.trim() || null,
+                telefono: tlfLimpio || null,
                 perfil_id: perfilId || null,
               },
             ])
@@ -429,10 +440,16 @@ export function FormularioCamiones({ onCamionAgregado }) {
                 </label>
                 <input
                   type="text"
-                  placeholder="Ej: 0414-1234567"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  maxLength={11}
+                  placeholder="Ej: 04141234567 (11 dígitos)"
                   value={nuevoTelefono}
-                  onChange={(e) => setNuevoTelefono(e.target.value)}
+                  onChange={(e) => setNuevoTelefono(e.target.value.replace(/\D/g, "").slice(0, 11))}
                 />
+                <small style={{ color: "#94a3b8", fontSize: "11px", marginTop: "4px", display: "block" }}>
+                  ℹ️ Solo números (11 dígitos): código de operadora (0414, 0424, 0412, 0416, 0426 o 02xx) + 7 dígitos.
+                </small>
               </FieldBox>
             </InputGrid>
           </ChoferSection>

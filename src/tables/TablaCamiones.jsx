@@ -283,13 +283,23 @@ export function TablaCamiones() {
           }
         }
 
+        const regexTelefonoVE = /^(0414|0424|0412|0416|0426|02\d{2})\d{7}$/;
+        const tlfLimpio = nuevoChoferTelefono.trim().replace(/\D/g, "");
+        if (tlfLimpio) {
+          if (!regexTelefonoVE.test(tlfLimpio)) {
+            alert("⚠️ El número de teléfono del nuevo chofer debe ser válido en Venezuela (11 dígitos comenzando por 0414, 0424, 0412, 0416, 0426 o código de área 02xx, ej: 04141234567).");
+            setGuardando(false);
+            return;
+          }
+        }
+
         const { data: nuevoC, error: errC } = await supabase
           .from("camioneros")
           .insert([
             {
               nombre: nuevoChoferNombre.trim(),
               cedula: cedulaLimpia || null,
-              telefono: nuevoChoferTelefono.trim() || null,
+              telefono: tlfLimpio || null,
             },
           ])
           .select("id, nombre")
@@ -881,10 +891,16 @@ export function TablaCamiones() {
                           <label>Teléfono de Contacto:</label>
                           <input
                             type="text"
-                            placeholder="Ej: 0414-1234567"
+                            inputMode="numeric"
+                            pattern="[0-9]*"
+                            maxLength={11}
+                            placeholder="Ej: 04141234567 (11 dígitos)"
                             value={nuevoChoferTelefono}
-                            onChange={(e) => setNuevoChoferTelefono(e.target.value)}
+                            onChange={(e) => setNuevoChoferTelefono(e.target.value.replace(/\D/g, "").slice(0, 11))}
                           />
+                          <small style={{ color: "#94a3b8", fontSize: "11px", marginTop: "2px", display: "block" }}>
+                            ℹ️ Solo números (11 dígitos, ej: 04141234567)
+                          </small>
                         </FormField>
                       </FormGrid>
                     </NuevoChoferBox>
