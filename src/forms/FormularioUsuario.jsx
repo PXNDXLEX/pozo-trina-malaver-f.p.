@@ -434,7 +434,7 @@ export function FormularioUsuario({ onUsuarioRegistrado }) {
               : ` vinculado a sus camiones cisterna`
             : "";
 
-        alert(`🎉 ¡Usuario "${nombre}" registrado exitosamente como ${rol}${totalCamionesMsg}!`);
+        alert(`🎉 ¡Se creó el usuario ${cedulaLimpia} para "${nombre.trim()}" exitosamente (Rol: ${rol})${totalCamionesMsg}!`);
         limpiarFormulario();
       }
     } catch (error) {
