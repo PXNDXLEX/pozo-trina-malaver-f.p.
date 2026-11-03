@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, useRef } from "react";
 import styled from "styled-components";
 import { supabase } from "../supabase/supabase.config";
 import { useAuthStore } from "../store/AuthStore";
+import { avisarYCompartirNotaEntrega } from "../utils/recargaPdfUtils";
 import {
   MdWaterDrop,
   MdLocalShipping,
@@ -193,9 +194,9 @@ export function DashboardRegistrador() {
       return;
     }
 
-    // 📸 Foto del comprobante de pago: OBLIGATORIA para recargas pagadas al momento
-    if (tipoRegistro === "pagado" && !fotoComprobante) {
-      alert("⚠️ La foto del comprobante de pago es obligatoria para el registrador cuando se marca como pagado.");
+    // 📸 Foto del comprobante de pago: OBLIGATORIA para recargas pagadas por transferencia o pago móvil (NO para efectivo en taquilla)
+    if (tipoRegistro === "pagado" && metodoPago !== "Efectivo" && !fotoComprobante) {
+      alert(`⚠️ La foto del comprobante de pago es obligatoria cuando se marca como pagado mediante ${metodoPago}.`);
       return;
     }
 
@@ -210,7 +211,7 @@ export function DashboardRegistrador() {
         urlFotoCamion = await subirFoto(fotoCamion, "camiones");
       }
 
-      if (tipoRegistro === "pagado" && fotoComprobante) {
+      if (tipoRegistro === "pagado" && metodoPago !== "Efectivo" && fotoComprobante) {
         urlComprobante = await subirFoto(fotoComprobante, "pagos");
       }
 
@@ -280,8 +281,22 @@ export function DashboardRegistrador() {
       setMensajeExito(msg);
       if (nuevoReg) setUltimoRegistro(nuevoReg);
 
+      const datosNota = {
+        camion: camionObj ? { ...camionObj } : null,
+        monto: montoNum,
+        metodo: metodoFinal,
+        referencia: referenciaFinal,
+        fecha: fechaActual,
+        nota: nota.trim(),
+        estatus: estatusFinal,
+        fotoUrl: previewCamion || urlFotoCamion,
+      };
+
       limpiarCampos();
       window.scrollTo({ top: 0, behavior: "smooth" });
+
+      // 📄 Prompt para generar / compartir la Nota de Entrega digital
+      avisarYCompartirNotaEntrega(datosNota);
     } catch (err) {
       console.error("Error al registrar recarga:", err);
       alert(`Error al registrar recarga: ${err.message || "Error desconocido"}`);
@@ -467,7 +482,18 @@ export function DashboardRegistrador() {
                   <Label>
                     <MdPayments className="icon" /> Método de Pago:
                   </Label>
-                  <Select value={metodoPago} onChange={(e) => setMetodoPago(e.target.value)}>
+                  <Select
+                    value={metodoPago}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setMetodoPago(val);
+                      if (val === "Efectivo") {
+                        setReferencia("");
+                        setFotoComprobante(null);
+                        setPreviewComprobante(null);
+                      }
+                    }}
+                  >
                     <option value="Transferencia">Transferencia Bancaria</option>
                     <option value="Pago Móvil">Pago Móvil</option>
                     <option value="Efectivo">Efectivo ($ USD o Bs)</option>
@@ -498,41 +524,43 @@ export function DashboardRegistrador() {
                 </FormGroup>
               </PaymentFieldsGrid>
 
-              {/* FOTO COMPROBANTE DE PAGO */}
-              <FormGroup>
-                <Label>
-                  <MdPhotoCamera className="icon" /> Foto del Comprobante de Pago: <span className="req">* Obligatoria</span>
-                </Label>
-                <PhotoUploadContainer>
-                  {previewComprobante ? (
-                    <PhotoPreviewWrapper>
-                      <img src={previewComprobante} alt="Preview comprobante" />
-                      <RemovePhotoBtn
-                        type="button"
-                        onClick={() => {
-                          setFotoComprobante(null);
-                          setPreviewComprobante(null);
-                        }}
-                      >
-                        <MdDeleteOutline /> Quitar
-                      </RemovePhotoBtn>
-                    </PhotoPreviewWrapper>
-                  ) : (
-                    <UploadDropzone>
-                      <input
-                        type="file"
-                        accept="image/*"
-                        id="foto-comprobante-input"
-                        onChange={handleFotoComprobanteChange}
-                      />
-                      <label htmlFor="foto-comprobante-input">
-                        <MdPhotoCamera className="upload-icon" />
-                        <span>Subir captura del comprobante bancario (Requerido)</span>
-                      </label>
-                    </UploadDropzone>
-                  )}
-                </PhotoUploadContainer>
-              </FormGroup>
+              {/* FOTO COMPROBANTE DE PAGO (SOLO TRANSFERENCIA / NO EFECTIVO) */}
+              {metodoPago !== "Efectivo" && (
+                <FormGroup>
+                  <Label>
+                    <MdPhotoCamera className="icon" /> Foto del Comprobante de Pago: <span className="req">* Obligatoria</span>
+                  </Label>
+                  <PhotoUploadContainer>
+                    {previewComprobante ? (
+                      <PhotoPreviewWrapper>
+                        <img src={previewComprobante} alt="Preview comprobante" />
+                        <RemovePhotoBtn
+                          type="button"
+                          onClick={() => {
+                            setFotoComprobante(null);
+                            setPreviewComprobante(null);
+                          }}
+                        >
+                          <MdDeleteOutline /> Quitar
+                        </RemovePhotoBtn>
+                      </PhotoPreviewWrapper>
+                    ) : (
+                      <UploadDropzone>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          id="foto-comprobante-input"
+                          onChange={handleFotoComprobanteChange}
+                        />
+                        <label htmlFor="foto-comprobante-input">
+                          <MdPhotoCamera className="upload-icon" />
+                          <span>Subir captura del comprobante bancario (Requerido)</span>
+                        </label>
+                      </UploadDropzone>
+                    )}
+                  </PhotoUploadContainer>
+                </FormGroup>
+              )}
             </PaymentFieldsBox>
           )}
 

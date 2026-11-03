@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from "react";
 import styled, { keyframes } from "styled-components";
 import { supabase } from "../supabase/supabase.config";
 import { useAuthStore } from "../store/AuthStore";
+import { avisarYCompartirNotaEntrega } from "../utils/recargaPdfUtils";
 import {
   MdClose,
   MdLocalShipping,
@@ -596,8 +597,8 @@ export function ModalRegistrarRecarga({ isOpen, onClose, onRecargaExitosa }) {
       return;
     }
 
-    if (exigeFotos && tipoRegistro === "pagado" && !fotoComprobante) {
-      alert("⚠️ La foto o captura del comprobante/referencia de pago es obligatoria cuando se registra como pagado.");
+    if (exigeFotos && tipoRegistro === "pagado" && metodoPago !== "Efectivo" && !fotoComprobante) {
+      alert(`⚠️ La foto o captura del comprobante es obligatoria para pagos registrados con ${metodoPago}.`);
       return;
     }
 
@@ -610,7 +611,7 @@ export function ModalRegistrarRecarga({ isOpen, onClose, onRecargaExitosa }) {
       }
 
       let urlComprobante = null;
-      if (tipoRegistro === "pagado" && fotoComprobante) {
+      if (tipoRegistro === "pagado" && metodoPago !== "Efectivo" && fotoComprobante) {
         urlComprobante = await subirArchivoStorage("comprobantes", fotoComprobante, "recibo");
       }
 
@@ -649,11 +650,17 @@ export function ModalRegistrarRecarga({ isOpen, onClose, onRecargaExitosa }) {
 
       if (insertError) throw insertError;
 
-      alert(
-        esPagado
-          ? "🎉 ¡Recarga pagada registrada con éxito!"
-          : "⏳ ¡Recarga registrada exitosamente como Deuda en Cuentas por Cobrar!"
-      );
+      const camionParaNota = camionActual ? { ...camionActual } : null;
+      const datosNota = {
+        camion: camionParaNota,
+        monto: montoNum,
+        metodo: metodoFinal,
+        referencia: referenciaFinal,
+        fecha: fechaActual,
+        nota: nota.trim(),
+        estatus: estatusFinal,
+        fotoUrl: previewCamion || urlFotoCamion,
+      };
 
       limpiarTodo();
       onClose();
@@ -661,6 +668,9 @@ export function ModalRegistrarRecarga({ isOpen, onClose, onRecargaExitosa }) {
       if (typeof onRecargaExitosa === "function") {
         onRecargaExitosa();
       }
+
+      // 📄 Prompt para generar y compartir Nota de Entrega en formato ticket PDF
+      avisarYCompartirNotaEntrega(datosNota);
     } catch (err) {
       console.error("Error al registrar recarga:", err);
       alert(`Error al registrar recarga: ${err.message || "Error desconocido"}`);
@@ -1391,7 +1401,15 @@ export function ModalRegistrarRecarga({ isOpen, onClose, onRecargaExitosa }) {
                       </Label>
                       <Select
                         value={metodoPago}
-                        onChange={(e) => setMetodoPago(e.target.value)}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setMetodoPago(val);
+                          if (val === "Efectivo") {
+                            setReferencia("");
+                            setFotoComprobante(null);
+                            setPreviewComprobante(null);
+                          }
+                        }}
                       >
                         <option value="Transferencia">Transferencia Bancaria</option>
                         <option value="Pago Móvil">Pago Móvil</option>
@@ -1422,45 +1440,47 @@ export function ModalRegistrarRecarga({ isOpen, onClose, onRecargaExitosa }) {
                       </FormGroup>
                     )}
 
-                    <FormGroup>
-                      <Label>
-                        <MdReceipt className="icon" /> Foto de la Factura / Comprobante de Pago:{" "}
-                        {user?.role === "registrador" || user?.role === "camionero" ? (
-                          <span className="req">* (Obligatoria)</span>
-                        ) : (
-                          <span className="optional">(Opcional)</span>
-                        )}
-                      </Label>
-                      <FileInputBox>
-                        <input
-                          type="file"
-                          id="foto-comprobante-input"
-                          accept="image/*"
-                          onChange={handleFotoComprobanteChange}
-                        />
-                        <FileInputLabel htmlFor="foto-comprobante-input" className="comprobante">
-                          <MdReceipt />{" "}
-                          {fotoComprobante
-                            ? "Cambiar foto comprobante"
-                            : "Adjuntar foto de comprobante/factura"}
-                        </FileInputLabel>
-                        {previewComprobante && (
-                          <PreviewWrapper>
-                            <PreviewImage src={previewComprobante} alt="Vista previa comprobante" />
-                            <RemovePreviewBtn
-                              type="button"
-                              onClick={() => {
-                                setFotoComprobante(null);
-                                setPreviewComprobante(null);
-                              }}
-                              title="Quitar foto comprobante"
-                            >
-                              <MdDeleteOutline />
-                            </RemovePreviewBtn>
-                          </PreviewWrapper>
-                        )}
-                      </FileInputBox>
-                    </FormGroup>
+                    {metodoPago !== "Efectivo" && (
+                      <FormGroup>
+                        <Label>
+                          <MdReceipt className="icon" /> Foto de la Factura / Comprobante de Pago:{" "}
+                          {user?.role === "registrador" || user?.role === "camionero" ? (
+                            <span className="req">* (Obligatoria)</span>
+                          ) : (
+                            <span className="optional">(Opcional)</span>
+                          )}
+                        </Label>
+                        <FileInputBox>
+                          <input
+                            type="file"
+                            id="foto-comprobante-input"
+                            accept="image/*"
+                            onChange={handleFotoComprobanteChange}
+                          />
+                          <FileInputLabel htmlFor="foto-comprobante-input" className="comprobante">
+                            <MdReceipt />{" "}
+                            {fotoComprobante
+                              ? "Cambiar foto comprobante"
+                              : "Adjuntar foto de comprobante/factura"}
+                          </FileInputLabel>
+                          {previewComprobante && (
+                            <PreviewWrapper>
+                              <PreviewImage src={previewComprobante} alt="Vista previa comprobante" />
+                              <RemovePreviewBtn
+                                type="button"
+                                onClick={() => {
+                                  setFotoComprobante(null);
+                                  setPreviewComprobante(null);
+                                }}
+                                title="Quitar foto comprobante"
+                              >
+                                <MdDeleteOutline />
+                              </RemovePreviewBtn>
+                            </PreviewWrapper>
+                          )}
+                        </FileInputBox>
+                      </FormGroup>
+                    )}
                   </PaidFieldsContainer>
                 )}
 

@@ -16,8 +16,10 @@ import {
   MdFilterList,
   MdOpenInNew,
   MdImageNotSupported,
-  MdDownload
+  MdDownload,
+  MdReceiptLong,
 } from "react-icons/md";
+import { mostrarModalComprobantePago } from "../utils/recargaPdfUtils";
 
 export function PagosRegistrados() {
   const [pagos, setPagos] = useState([]);
@@ -272,6 +274,7 @@ export function PagosRegistrados() {
                   <th>Referencia Bancaria</th>
                   <th style={{ textAlign: "center" }}>Foto Camión</th>
                   <th style={{ textAlign: "center" }}>Factura / Recibo</th>
+                  <th style={{ textAlign: "center" }}>Comprobante de Pago</th>
                 </tr>
               </thead>
               <tbody>
@@ -341,6 +344,7 @@ export function PagosRegistrados() {
                                 url: pago.url_foto,
                                 titulo: `Evidencia Camión - ${pago.camiones?.placa || ""}`,
                                 subtitulo: `Chofer: ${pago.camiones?.chofer || ""} | Fecha: ${fecha} ${hora}`,
+                                pago,
                               })
                             }
                             title="Ver foto del camión"
@@ -368,6 +372,7 @@ export function PagosRegistrados() {
                                 url: pago.url_comprobante,
                                 titulo: `Comprobante de Pago - Ref: ${pago.referencia || "S/R"}`,
                                 subtitulo: `Monto: ${formatearDinero(pago.monto)} | ${pago.metodo} | ${fecha}`,
+                                pago,
                               })
                             }
                             title="Ver factura o comprobante"
@@ -382,6 +387,18 @@ export function PagosRegistrados() {
                             <MdImageNotSupported />
                           </NoPhotoBadge>
                         )}
+                      </td>
+
+                      {/* ACCIÓN: GENERAR COMPROBANTE OFICIAL DE PAGO */}
+                      <td style={{ textAlign: "center" }}>
+                        <GenerateReceiptBtn
+                          type="button"
+                          onClick={() => mostrarModalComprobantePago(pago)}
+                          title="Generar Comprobante Oficial de Pago dando fe del cobro registrado (PDF / Compartir)"
+                        >
+                          <MdReceiptLong />
+                          <span>Comprobante</span>
+                        </GenerateReceiptBtn>
                       </td>
                     </tr>
                   );
@@ -400,7 +417,16 @@ export function PagosRegistrados() {
                   <h4>{imagenModal.titulo}</h4>
                   {imagenModal.subtitulo && <p>{imagenModal.subtitulo}</p>}
                 </div>
-                <div style={{ display: "flex", gap: "8px" }}>
+                <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+                  {imagenModal.pago && (
+                    <LightboxReceiptBtn
+                      type="button"
+                      onClick={() => mostrarModalComprobantePago(imagenModal.pago)}
+                      title="Generar Comprobante Oficial de Pago"
+                    >
+                      <MdReceiptLong /> Comprobante PDF
+                    </LightboxReceiptBtn>
+                  )}
                   <ActionIconLink
                     href={imagenModal.url}
                     target="_blank"
@@ -848,6 +874,68 @@ const NoPhotoBadge = styled.div`
   border-radius: 6px;
   color: #475569;
   font-size: 18px;
+`;
+
+const GenerateReceiptBtn = styled.button`
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.16), rgba(5, 150, 105, 0.28));
+  border: 1px solid rgba(16, 185, 129, 0.45);
+  color: #34d399;
+  padding: 6px 12px;
+  border-radius: 8px;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  white-space: nowrap;
+
+  svg {
+    font-size: 16px;
+  }
+
+  &:hover {
+    background: linear-gradient(135deg, rgba(16, 185, 129, 0.35), rgba(5, 150, 105, 0.5));
+    border-color: #10b981;
+    color: #ffffff;
+    box-shadow: 0 0 14px rgba(16, 185, 129, 0.4);
+    transform: translateY(-1px);
+  }
+
+  &:active {
+    transform: translateY(0);
+  }
+`;
+
+const LightboxReceiptBtn = styled.button`
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  color: #ffffff;
+  border: none;
+  padding: 7px 14px;
+  border-radius: 8px;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  box-shadow: 0 2px 10px rgba(16, 185, 129, 0.35);
+
+  svg {
+    font-size: 16px;
+  }
+
+  &:hover {
+    filter: brightness(1.1);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 16px rgba(16, 185, 129, 0.55);
+  }
+
+  &:active {
+    transform: translateY(0);
+  }
 `;
 
 const LoadingState = styled.div`

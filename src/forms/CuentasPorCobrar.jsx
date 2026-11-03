@@ -280,9 +280,9 @@ export function CuentasPorCobrar() {
       }
     }
 
-    // 📸 Validación obligatoria de comprobante para choferes camioneros
-    if (user?.role === "camionero" && !fotoComprobante) {
-      alert("⚠️ La foto o captura del comprobante/referencia de pago es obligatoria para registrar el pago.");
+    // 📸 Validación obligatoria de comprobante para choferes camioneros (solo transferencias y pagos digitales)
+    if (user?.role === "camionero" && metodoPago !== "Efectivo" && !fotoComprobante) {
+      alert(`⚠️ La foto o captura del comprobante/referencia de pago es obligatoria para registrar pagos por ${metodoPago}.`);
       return;
     }
 
@@ -693,8 +693,13 @@ export function CuentasPorCobrar() {
                     <select
                       value={metodoPago}
                       onChange={(e) => {
-                        setMetodoPago(e.target.value);
-                        if (e.target.value === "Efectivo") setReferencia("");
+                        const val = e.target.value;
+                        setMetodoPago(val);
+                        if (val === "Efectivo") {
+                          setReferencia("");
+                          setFotoComprobante(null);
+                          setPreviewComprobante(null);
+                        }
                       }}
                     >
                       <option value="Transferencia">Transferencia Bancaria</option>
@@ -738,50 +743,52 @@ export function CuentasPorCobrar() {
                     </FormField>
                   )}
 
-                  {/* FOTO COMPROBANTE DE PAGO */}
-                  <FormField>
-                    <label>
-                      <MdPhotoCamera /> Foto del Comprobante / Recibo:{" "}
-                      {user?.role === "camionero" ? (
-                        <span className="req" style={{ color: "#ef4444", fontWeight: 700 }}>
-                          * (Obligatoria)
-                        </span>
-                      ) : (
-                        <span className="opt">(Opcional)</span>
-                      )}
-                    </label>
-                    <FileInputWrap>
-                      <input
-                        type="file"
-                        id="modal-comprobante-input"
-                        accept="image/*"
-                        onChange={(e) => {
-                          const file = e.target.files[0];
-                          if (file) {
-                            setFotoComprobante(file);
-                            setPreviewComprobante(URL.createObjectURL(file));
-                          }
-                        }}
-                      />
-                      <FileLabel htmlFor="modal-comprobante-input">
-                        <MdPhotoCamera /> {fotoComprobante ? "Cambiar foto adjunta" : "Subir foto del comprobante"}
-                      </FileLabel>
-                      {previewComprobante && (
-                        <PreviewMini>
-                          <img src={previewComprobante} alt="Preview" />
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setFotoComprobante(null);
-                              setPreviewComprobante(null);
-                            }}
-                          >
-                            <MdDeleteOutline />
-                          </button>
-                        </PreviewMini>
-                      )}
-                    </FileInputWrap>
-                  </FormField>
+                  {/* FOTO COMPROBANTE DE PAGO (SOLO TRANSFERENCIA / NO EFECTIVO) */}
+                  {metodoPago !== "Efectivo" && (
+                    <FormField>
+                      <label>
+                        <MdPhotoCamera /> Foto del Comprobante / Recibo:{" "}
+                        {user?.role === "camionero" ? (
+                          <span className="req" style={{ color: "#ef4444", fontWeight: 700 }}>
+                            * (Obligatoria)
+                          </span>
+                        ) : (
+                          <span className="opt">(Opcional)</span>
+                        )}
+                      </label>
+                      <FileInputWrap>
+                        <input
+                          type="file"
+                          id="modal-comprobante-input"
+                          accept="image/*"
+                          onChange={(e) => {
+                            const file = e.target.files[0];
+                            if (file) {
+                              setFotoComprobante(file);
+                              setPreviewComprobante(URL.createObjectURL(file));
+                            }
+                          }}
+                        />
+                        <FileLabel htmlFor="modal-comprobante-input">
+                          <MdPhotoCamera /> {fotoComprobante ? "Cambiar foto adjunta" : "Subir foto del comprobante"}
+                        </FileLabel>
+                        {previewComprobante && (
+                          <PreviewMini>
+                            <img src={previewComprobante} alt="Preview" />
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setFotoComprobante(null);
+                                setPreviewComprobante(null);
+                              }}
+                            >
+                              <MdDeleteOutline />
+                            </button>
+                          </PreviewMini>
+                        )}
+                      </FileInputWrap>
+                    </FormField>
+                  )}
                 </ModalScrollContent>
 
                 <ModalFooter>
