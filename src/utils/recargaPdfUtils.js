@@ -152,6 +152,26 @@ function dibujarImagenEncuadrada(doc, imgData, y, etiqueta) {
 }
 
 /**
+ * Extrae la fecha en formato DD-MM-YYYY para nombres de archivo limpios y ordenados
+ */
+export function formatearFechaParaArchivo(fechaValor) {
+  const f = fechaValor ? new Date(fechaValor) : new Date();
+  const d = isNaN(f.getTime()) ? new Date() : f;
+  const anio = d.getFullYear();
+  const mes = String(d.getMonth() + 1).padStart(2, "0");
+  const dia = String(d.getDate()).padStart(2, "0");
+  return `${dia}-${mes}-${anio}`;
+}
+
+/**
+ * Normaliza y limpia la cédula para que sea segura en nombres de archivo
+ */
+export function formatearCedula(cedulaRaw) {
+  if (!cedulaRaw) return "";
+  return String(cedulaRaw).replace(/[^\w]/g, "").trim();
+}
+
+/**
  * Formatea valores numéricos a dólares ($X.XX)
  */
 export function formatearMonto(val) {
@@ -187,12 +207,19 @@ export async function generarNotaEntregaPDF({
   nota,
   estatus,
   fotoUrl,
+  cedula,
 }) {
   const { fecha: strFecha, hora: strHora } = extraerFechaHora(fecha);
   const esPagado = String(estatus).toLowerCase() === "pagado";
   const placa = camion?.placa || "Sin Placa";
   const chofer = camion?.chofer || "No Especificado";
   const capacidad = camion?.capacidad ? `${camion.capacidad} Lts` : null;
+
+  // Cédula del camionero y fecha en que se registra
+  const cedulaCamionero = formatearCedula(cedula || camion?.cedula || camion?.camioneros?.cedula);
+  const fechaArchivo = formatearFechaParaArchivo(fecha);
+  const idArchivo = cedulaCamionero || placa.replace(/\s+/g, "_");
+  const nombreArchivo = `Nota_Entrega_${idArchivo}_${fechaArchivo}.pdf`;
 
   // Carga inteligente de la foto del camión con proporciones reales
   const imgCamion = await cargarImagenConDimensiones(fotoUrl);
@@ -239,7 +266,11 @@ export async function generarNotaEntregaPDF({
   doc.setFont("helvetica", "bold");
   doc.text("Chofer:", 5, curY);
   doc.setFont("helvetica", "normal");
-  doc.text(`${chofer}`, 20, curY);
+  let textoChofer = chofer;
+  if (cedulaCamionero) {
+    textoChofer += ` (C.I. ${cedulaCamionero})`;
+  }
+  doc.text(`${textoChofer}`, 20, curY);
 
   curY += 6;
   doc.setFont("helvetica", "bold");
@@ -340,13 +371,13 @@ export async function generarNotaEntregaPDF({
   doc.setTextColor(148, 163, 184);
   doc.text("Pozo Trina Malaver F.P. • Sistema Digital de Despacho", 40, curY, { align: "center" });
 
-  const nombreArchivo = `Nota_Entrega_${placa.replace(/\s+/g, "_")}_${Date.now().toString().slice(-4)}.pdf`;
-
   return {
     doc,
     nombreArchivo,
     placa,
     chofer,
+    cedula: cedulaCamionero,
+    fechaArchivo,
     monto,
     metodo,
     referencia,
@@ -372,6 +403,17 @@ export async function generarComprobantePagoPDF(pago) {
   const referencia = pago?.referencia || null;
   const monto = Number(pago?.monto) || 0;
   const numRecibo = String(pago?.id || Date.now()).replace(/\D/g, "").slice(-6) || "001234";
+
+  // Cédula del camionero y fecha en que se registra
+  const cedulaCamionero = formatearCedula(
+    pago?.camiones?.cedula ||
+    pago?.camiones?.camioneros?.cedula ||
+    pago?.cedula ||
+    pago?.chofer_cedula
+  );
+  const fechaArchivo = formatearFechaParaArchivo(pago?.fecha_carga);
+  const idArchivo = cedulaCamionero || placa.replace(/\s+/g, "_");
+  const nombreArchivo = `Comprobante_Pago_${idArchivo}_${fechaArchivo}.pdf`;
 
   // 📸 Carga inteligente de la foto del camión de la recarga (url_foto)
   const fotoCamionUrl = pago?.url_foto || pago?.foto_camion || pago?.fotoUrl || null;
@@ -433,7 +475,11 @@ export async function generarComprobantePagoPDF(pago) {
   doc.setFontSize(8.5);
   doc.text("Recibido de:", 5, curY);
   doc.setFont("helvetica", "normal");
-  doc.text(`${chofer}`, 26, curY);
+  let textoChofer = chofer;
+  if (cedulaCamionero) {
+    textoChofer += ` (C.I. ${cedulaCamionero})`;
+  }
+  doc.text(`${textoChofer}`, 26, curY);
 
   curY += 5.5;
   doc.setFont("helvetica", "bold");
@@ -544,14 +590,14 @@ export async function generarComprobantePagoPDF(pago) {
   doc.setTextColor(148, 163, 184);
   doc.text("Documento oficial emitido por el sistema automatizado", 40, curY, { align: "center" });
 
-  const nombreArchivo = `Comprobante_Pago_REC-${numRecibo}_${placa.replace(/\s+/g, "_")}.pdf`;
-
   return {
     doc,
     nombreArchivo,
     numRecibo,
     placa,
     chofer,
+    cedula: cedulaCamionero,
+    fechaArchivo,
     monto,
     metodo,
     referencia,
@@ -610,9 +656,10 @@ export function compartirPorWhatsApp(texto) {
  * =========================================================================
  */
 export async function avisarYCompartirNotaEntrega(datosNota) {
-  const { camion, monto, metodo, referencia, estatus, fotoUrl } = datosNota;
+  const { camion, monto, metodo, referencia, estatus, fotoUrl, cedula } = datosNota;
   const placa = camion?.placa || "Unidad Cisterna";
   const chofer = camion?.chofer || "Sin Chofer";
+  const cedulaCamionero = formatearCedula(cedula || camion?.cedula || camion?.camioneros?.cedula);
   const esPagado = String(estatus).toLowerCase() === "pagado";
   const montoFormat = formatearMonto(monto);
 
@@ -626,7 +673,7 @@ export async function avisarYCompartirNotaEntrega(datosNota) {
         <div style="background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(0, 195, 255, 0.25); border-radius: 12px; padding: 12px 14px; margin-bottom: 14px;">
           <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
             <span style="color: #94a3b8;">Placa / Chofer:</span>
-            <strong style="color: #00c3ff;">${placa} (${chofer})</strong>
+            <strong style="color: #00c3ff;">${placa} (${chofer}${cedulaCamionero ? ` - C.I. ${cedulaCamionero}` : ""})</strong>
           </div>
           <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
             <span style="color: #94a3b8;">Monto Registrado:</span>
@@ -691,7 +738,7 @@ export async function avisarYCompartirNotaEntrega(datosNota) {
         `----------------------------------------\n` +
         `📅 *Fecha:* ${resultadoPdf.strFecha} ${resultadoPdf.strHora}\n` +
         `🚚 *Placa:* ${placa}\n` +
-        `👤 *Chofer:* ${chofer}\n` +
+        `👤 *Chofer:* ${chofer}${resultadoPdf.cedula ? ` (C.I. ${resultadoPdf.cedula})` : ""}\n` +
         `💵 *Total:* $${Number(monto || 0).toFixed(2)}\n` +
         `💳 *Estado:* ${esPagado ? `PAGADO (${metodo || "Efectivo"})` : "CARGADO A CRÉDITO (DEUDA)"}\n` +
         (referencia ? `🔢 *Ref:* ${referencia}\n` : "") +
@@ -748,6 +795,12 @@ export async function mostrarModalComprobantePago(pago) {
   const { fecha: strFecha, hora: strHora } = extraerFechaHora(pago?.fecha_carga);
   const placa = pago?.camiones?.placa || "Sin Placa";
   const chofer = pago?.camiones?.chofer || "Cliente / Chofer";
+  const cedulaCamionero = formatearCedula(
+    pago?.camiones?.cedula ||
+    pago?.camiones?.camioneros?.cedula ||
+    pago?.cedula ||
+    pago?.chofer_cedula
+  );
   const monto = Number(pago?.monto) || 0;
   const metodo = pago?.metodo || "Efectivo";
   const referencia = pago?.referencia || "Pago en Efectivo (Taquilla)";
@@ -764,7 +817,7 @@ export async function mostrarModalComprobantePago(pago) {
         <div style="background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(34, 197, 94, 0.35); border-radius: 12px; padding: 12px 14px; margin-bottom: 14px;">
           <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
             <span style="color: #94a3b8;">Cliente / Chofer:</span>
-            <strong style="color: #f8fafc;">${chofer}</strong>
+            <strong style="color: #f8fafc;">${chofer}${cedulaCamionero ? ` (C.I. ${cedulaCamionero})` : ""}</strong>
           </div>
           <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
             <span style="color: #94a3b8;">Unidad Cisterna:</span>
@@ -831,7 +884,7 @@ export async function mostrarModalComprobantePago(pago) {
         `N° REC-${resPdf.numRecibo}\n` +
         `----------------------------------------\n` +
         `📅 *Fecha:* ${resPdf.strFecha} ${resPdf.strHora}\n` +
-        `👤 *Cliente / Chofer:* ${chofer}\n` +
+        `👤 *Cliente / Chofer:* ${chofer}${resPdf.cedula ? ` (C.I. ${resPdf.cedula})` : ""}\n` +
         `🚚 *Placa Unidad:* ${placa}\n` +
         `💰 *Total Pagado:* $${monto.toFixed(2)} USD\n` +
         `💳 *Método:* ${metodo}\n` +

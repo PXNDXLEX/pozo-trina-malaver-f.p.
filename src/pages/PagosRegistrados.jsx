@@ -52,7 +52,7 @@ export function PagosRegistrados() {
           url_comprobante,
           estatus,
           pago_id,
-          camiones ( id, placa, chofer, capacidad, modelo )
+          camiones ( id, placa, chofer, capacidad, modelo, camionero_id, perfil_id )
         `)
         .eq("estatus", "pagado")
         .order("fecha_carga", { ascending: false });
@@ -79,7 +79,7 @@ export function PagosRegistrados() {
             url_foto,
             estatus,
             pago_id,
-            camiones ( id, placa, chofer, capacidad, modelo )
+            camiones ( id, placa, chofer, capacidad, modelo, camionero_id, perfil_id )
           `)
           .eq("estatus", "pagado")
           .order("fecha_carga", { ascending: false });
@@ -96,6 +96,29 @@ export function PagosRegistrados() {
       }
 
       if (error) throw error;
+
+      // Asociar cédula del camionero a cada pago para nombres de archivo y comprobantes
+      if (data && data.length > 0) {
+        const { data: choferes } = await supabase
+          .from("camioneros")
+          .select("id, cedula, perfil_id");
+        const mapCed = new Map();
+        (choferes || []).forEach((ch) => {
+          if (ch.id) mapCed.set(String(ch.id), ch.cedula);
+          if (ch.perfil_id) mapCed.set(String(ch.perfil_id), ch.cedula);
+        });
+
+        data.forEach((p) => {
+          if (p.camiones) {
+            const ced =
+              (p.camiones.camionero_id && mapCed.get(String(p.camiones.camionero_id))) ||
+              (p.camiones.perfil_id && mapCed.get(String(p.camiones.perfil_id))) ||
+              null;
+            p.camiones.cedula = ced;
+          }
+        });
+      }
+
       setPagos(data || []);
     } catch (err) {
       console.error("Error al cargar pagos:", err.message);

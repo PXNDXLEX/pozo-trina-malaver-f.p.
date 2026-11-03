@@ -154,7 +154,11 @@ export function ModalRegistrarRecarga({ isOpen, onClose, onRecargaExitosa }) {
           console.error("Error al cargar camiones de chofer:", errCam);
         }
 
-        const misUnidades = Array.from(trucksMap.values());
+        const cedChofer = cRow?.cedula || user?.cedula || null;
+        const misUnidades = Array.from(trucksMap.values()).map((t) => ({
+          ...t,
+          cedula: t.cedula || cedChofer,
+        }));
         setCamiones(misUnidades);
 
         // REGLA: Si tiene solo 1 camión, seleccionar automáticamente y abrir formulario
@@ -182,8 +186,24 @@ export function ModalRegistrarRecarga({ isOpen, onClose, onRecargaExitosa }) {
         const choferesData = resChoferes.data || [];
         const camionesData = resCamiones.data || [];
 
+        const mapaChoferes = new Map();
+        choferesData.forEach((ch) => {
+          if (ch.id) mapaChoferes.set(String(ch.id), ch);
+          if (ch.perfil_id) mapaChoferes.set(String(ch.perfil_id), ch);
+        });
+
+        const camionesEnriquecidos = camionesData.map((c) => {
+          const ch =
+            (c.camionero_id && mapaChoferes.get(String(c.camionero_id))) ||
+            (c.perfil_id && mapaChoferes.get(String(c.perfil_id)));
+          return {
+            ...c,
+            cedula: ch?.cedula || c.cedula || null,
+          };
+        });
+
         setChoferes(choferesData);
-        setCamiones(camionesData);
+        setCamiones(camionesEnriquecidos);
         setChoferSeleccionado(null);
         setCamionSeleccionadoId("");
 
@@ -650,9 +670,19 @@ export function ModalRegistrarRecarga({ isOpen, onClose, onRecargaExitosa }) {
 
       if (insertError) throw insertError;
 
-      const camionParaNota = camionActual ? { ...camionActual } : null;
+      const cedulaChofer =
+        choferSeleccionado?.cedula ||
+        camionActual?.cedula ||
+        user?.cedula ||
+        null;
+
+      const camionParaNota = camionActual
+        ? { ...camionActual, cedula: cedulaChofer || camionActual.cedula }
+        : null;
+
       const datosNota = {
         camion: camionParaNota,
+        cedula: cedulaChofer,
         monto: montoNum,
         metodo: metodoFinal,
         referencia: referenciaFinal,

@@ -69,13 +69,31 @@ export function DashboardRegistrador() {
   const cargarCamiones = async () => {
     setCargandoCamiones(true);
     try {
-      const { data, error } = await supabase
-        .from("camiones")
-        .select("id, placa, chofer, capacidad, modelo")
-        .order("chofer", { ascending: true });
+      const [resCam, resChof] = await Promise.all([
+        supabase
+          .from("camiones")
+          .select("id, placa, chofer, capacidad, modelo, camionero_id, perfil_id")
+          .order("chofer", { ascending: true }),
+        supabase
+          .from("camioneros")
+          .select("id, cedula, perfil_id"),
+      ]);
 
-      if (error) throw error;
-      setCamiones(data || []);
+      const mapCed = new Map();
+      (resChof.data || []).forEach((ch) => {
+        if (ch.id) mapCed.set(String(ch.id), ch.cedula);
+        if (ch.perfil_id) mapCed.set(String(ch.perfil_id), ch.cedula);
+      });
+
+      const camionesFinales = (resCam.data || []).map((c) => ({
+        ...c,
+        cedula:
+          (c.camionero_id && mapCed.get(String(c.camionero_id))) ||
+          (c.perfil_id && mapCed.get(String(c.perfil_id))) ||
+          null,
+      }));
+
+      setCamiones(camionesFinales);
     } catch (err) {
       console.error("Error al cargar camiones:", err.message);
     } finally {
@@ -283,6 +301,7 @@ export function DashboardRegistrador() {
 
       const datosNota = {
         camion: camionObj ? { ...camionObj } : null,
+        cedula: camionObj?.cedula || null,
         monto: montoNum,
         metodo: metodoFinal,
         referencia: referenciaFinal,
