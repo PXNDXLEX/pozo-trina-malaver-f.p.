@@ -1,5 +1,6 @@
 import { jsPDF } from "jspdf";
 import Swal from "sweetalert2";
+import { supabase } from "../supabase/supabase.config";
 
 /**
  * Convierte un archivo, Blob o URL remota a base64 DataURL
@@ -149,6 +150,124 @@ function dibujarImagenEncuadrada(doc, imgData, y, etiqueta) {
 
   // Retorna la nueva coordenada vertical Y para que el texto continúe abajo de forma armónica
   return imgY + h + 6;
+}
+
+/**
+ * Acomoda inteligentemente una o múltiples fotos de camiones en el ticket de 80mm:
+ * - Si es 1 foto: se encuadra centrada ocupando el ancho del ticket manteniendo proporciones.
+ * - Si son 2 o más fotos: se distribuyen en una cuadrícula simétrica de 2 columnas (33.5mm de ancho c/u),
+ *   con marco redondeado, tarjeta con identificador de la recarga, monto y fecha/hora de la carga.
+ * - Si la cantidad es impar, la última foto se centra en la fila inferior para mantener perfecto balance estético.
+ */
+function dibujarGaleriaFotosCamion(doc, fotosCamion, startY) {
+  if (!fotosCamion || fotosCamion.length === 0) return startY;
+
+  let curY = startY;
+
+  // CASO A: 1 Sola Foto
+  if (fotosCamion.length === 1) {
+    const foto = fotosCamion[0];
+    const { x, w, h } = calcularDimensionesImagen(foto.imgData.aspectRatio, 66, 44);
+
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(8);
+    doc.setTextColor(30, 41, 59);
+    doc.text("Evidencia Fotográfica de la Cisterna en Pozo", 40, curY, { align: "center" });
+
+    const imgY = curY + 2.5;
+    doc.setFillColor(248, 250, 252);
+    doc.setDrawColor(203, 213, 225);
+    doc.setLineWidth(0.35);
+    doc.roundedRect(x - 1, imgY - 1, w + 2, h + 2, 2, 2, "FD");
+
+    doc.addImage(foto.imgData.dataUri, "JPEG", x, imgY, w, h);
+
+    if (foto.fecha && foto.hora) {
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(6.5);
+      doc.setTextColor(100, 116, 139);
+      doc.text(`Captura: ${foto.fecha} ${foto.hora}`, 40, imgY + h + 3.8, { align: "center" });
+      return imgY + h + 8;
+    }
+
+    return imgY + h + 6;
+  }
+
+  // CASO B: Múltiples Fotos (Cuadrícula Inteligente de 2 Columnas)
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(8.5);
+  doc.setTextColor(15, 23, 42);
+  doc.text(`EVIDENCIAS FOTOGRÁFICAS EN POZO (${fotosCamion.length} FOTOS)`, 40, curY, { align: "center" });
+
+  curY += 3.5;
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(6.8);
+  doc.setTextColor(100, 116, 139);
+  doc.text("Registro visual de la cisterna en cada recarga liquidada", 40, curY, { align: "center" });
+
+  curY += 3.5;
+
+  const colWidth = 33.5;
+  const cardHeight = 33;
+  const gapY = 2.5;
+
+  for (let i = 0; i < fotosCamion.length; i++) {
+    const foto = fotosCamion[i];
+    const isOddTotal = fotosCamion.length % 2 === 1;
+    const isLast = i === fotosCamion.length - 1;
+
+    let cellX = 5;
+    const rowIndex = Math.floor(i / 2);
+
+    if (isOddTotal && isLast) {
+      // Centrar la última foto impar en la fila inferior
+      cellX = Number(((80 - colWidth) / 2).toFixed(2));
+    } else {
+      const colIndex = i % 2;
+      cellX = colIndex === 0 ? 5 : 41.5;
+    }
+
+    const cellY = curY + rowIndex * (cardHeight + gapY);
+
+    // Tarjeta contenedora con esquinas redondeadas
+    doc.setFillColor(248, 250, 252);
+    doc.setDrawColor(203, 213, 225);
+    doc.setLineWidth(0.3);
+    doc.roundedRect(cellX, cellY, colWidth, cardHeight, 1.8, 1.8, "FD");
+
+    // Título superior de la tarjeta (N° Recarga y Monto)
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(6.5);
+    doc.setTextColor(15, 23, 42);
+    const tituloCard = `Recarga #${foto.index || i + 1} • $${Number(foto.monto || 0).toFixed(2)}`;
+    doc.text(tituloCard, cellX + colWidth / 2, cellY + 3.4, { align: "center" });
+
+    // Dimensiones óptimas de la imagen dentro de la celda manteniendo su proporción
+    const maxImgW = 31;
+    const maxImgH = 22;
+    let imgW = maxImgW;
+    let imgH = imgW / foto.imgData.aspectRatio;
+    if (imgH > maxImgH) {
+      imgH = maxImgH;
+      imgW = imgH * foto.imgData.aspectRatio;
+    }
+
+    const imgX = cellX + (colWidth - imgW) / 2;
+    const imgY = cellY + 4.2 + (maxImgH - imgH) / 2;
+
+    doc.addImage(foto.imgData.dataUri, "JPEG", imgX, imgY, imgW, imgH);
+
+    // Pie de la tarjeta con fecha y hora de la recarga
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(5.8);
+    doc.setTextColor(100, 116, 139);
+    const pieCard = `${foto.fecha || ""} ${foto.hora || ""}`.trim() || `Viaje #${foto.index || i + 1}`;
+    doc.text(pieCard, cellX + colWidth / 2, cellY + cardHeight - 1.8, { align: "center" });
+  }
+
+  const numFilas = Math.ceil(fotosCamion.length / 2);
+  curY += numFilas * (cardHeight + gapY) + 4;
+  return curY;
 }
 
 /**
@@ -391,52 +510,131 @@ export async function generarNotaEntregaPDF({
  * =========================================================================
  * 2. GENERADOR DE COMPROBANTE DE PAGO (RECIBO OFICIAL DE CAJA - 80mm)
  * =========================================================================
- * Da fe del pago y anexa también la foto del camión cisterna registrada.
+ * Da fe del pago y anexa también las fotos del camión cisterna registradas.
+ * - Si es 1 recarga: muestra foto encuadrada centrada a ancho completo.
+ * - Si es un pago de varias recargas: desglose de viajes y cuadrícula
+ *   inteligente de fotos de camiones tomadas en cada recarga despachada.
  */
 export async function generarComprobantePagoPDF(pago) {
-  const { fecha: strFecha, hora: strHora } = extraerFechaHora(pago?.fecha_carga);
-  const placa = pago?.camiones?.placa || "Sin Placa";
-  const chofer = pago?.camiones?.chofer || "Cliente / Chofer";
-  const capacidad = pago?.camiones?.capacidad ? `${pago.camiones.capacidad} Lts` : null;
-  const modelo = pago?.camiones?.modelo || null;
-  const metodo = pago?.metodo || "Efectivo";
-  const referencia = pago?.referencia || null;
-  const monto = Number(pago?.monto) || 0;
-  const numRecibo = String(pago?.id || Date.now()).replace(/\D/g, "").slice(-6) || "001234";
+  // 1. Detección y normalización de recargas (individual o lote consolidado)
+  let recargas = Array.isArray(pago?.recargas) && pago.recargas.length > 0
+    ? pago.recargas
+    : (Array.isArray(pago?.viajes) && pago.viajes.length > 0 ? pago.viajes : null);
+
+  // Si no vienen precargadas pero existe pago_id, buscar recargas hermanas del mismo cobro
+  if (!recargas && pago?.pago_id) {
+    try {
+      const { data: recsDb } = await supabase
+        .from("registros_carga")
+        .select(`
+          id,
+          monto,
+          metodo,
+          referencia,
+          fecha_carga,
+          url_foto,
+          url_comprobante,
+          estatus,
+          pago_id,
+          camiones ( id, placa, chofer, capacidad, modelo, camionero_id, perfil_id )
+        `)
+        .eq("pago_id", pago.pago_id)
+        .order("fecha_carga", { ascending: true });
+
+      if (recsDb && recsDb.length > 1) {
+        recargas = recsDb;
+      }
+    } catch (errDb) {
+      console.warn("No se pudieron consultar recargas hermanas del pago_id:", errDb);
+    }
+  }
+
+  const esLote = Boolean(recargas && recargas.length > 1);
+  const recargasLista = esLote ? recargas : [pago];
+
+  // 2. Extracción de datos del camión y chofer
+  const camionBase = pago?.camiones || (recargas && recargas[0]?.camiones) || {};
+  const placa = camionBase?.placa || pago?.placa || "Sin Placa";
+  const chofer = camionBase?.chofer || pago?.chofer || "Cliente / Chofer";
+  const capacidad = camionBase?.capacidad ? `${camionBase.capacidad} Lts` : null;
+  const modelo = camionBase?.modelo || null;
 
   // Cédula del camionero y fecha en que se registra
   const cedulaCamionero = formatearCedula(
-    pago?.camiones?.cedula ||
-    pago?.camiones?.camioneros?.cedula ||
+    camionBase?.cedula ||
+    camionBase?.camioneros?.cedula ||
     pago?.cedula ||
     pago?.chofer_cedula
   );
-  const fechaArchivo = formatearFechaParaArchivo(pago?.fecha_carga);
+
+  const fechaReferencia =
+    pago?.fecha_carga ||
+    (recargas && recargas[recargas.length - 1]?.fecha_carga) ||
+    new Date().toISOString();
+  const { fecha: strFecha, hora: strHora } = extraerFechaHora(fechaReferencia);
+  const fechaArchivo = formatearFechaParaArchivo(fechaReferencia);
   const idArchivo = cedulaCamionero || placa.replace(/\s+/g, "_");
   const nombreArchivo = `Comprobante_Pago_${idArchivo}_${fechaArchivo}.pdf`;
 
-  // 📸 Carga inteligente de la foto del camión de la recarga (url_foto)
-  const fotoCamionUrl = pago?.url_foto || pago?.foto_camion || pago?.fotoUrl || null;
-  const imgCamion = await cargarImagenConDimensiones(fotoCamionUrl);
+  const metodo = pago?.metodo || (recargas && recargas[0]?.metodo) || "Efectivo";
+  const referencia = pago?.referencia || (recargas && recargas[0]?.referencia) || null;
+  const monto = esLote
+    ? recargas.reduce((sum, r) => sum + (Number(r.monto) || 0), 0)
+    : (Number(pago?.monto) || 0);
+
+  const numRecibo = String(pago?.id || pago?.pago_id || Date.now()).replace(/\D/g, "").slice(-6) || "001234";
+
+  // 3. 📸 Carga inteligente de todas las fotos de camión registradas en pozo
+  const promesasFotos = recargasLista.map(async (r, idx) => {
+    const url = r.url_foto || r.foto_camion || r.fotoUrl;
+    if (!url) return null;
+    const imgData = await cargarImagenConDimensiones(url);
+    if (!imgData) return null;
+    const { fecha: fStr, hora: hStr } = extraerFechaHora(r.fecha_carga);
+    return {
+      imgData,
+      fecha: fStr,
+      hora: hStr,
+      monto: Number(r.monto) || 0,
+      index: idx + 1,
+      capacidad: r.camiones?.capacidad || r.capacidad || null,
+    };
+  });
+  const fotosCamionValidas = (await Promise.all(promesasFotos)).filter(Boolean);
 
   // Carga del soporte bancario si existe (url_comprobante)
-  const fotoComprobanteUrl = pago?.url_comprobante || null;
+  const fotoComprobanteUrl =
+    pago?.url_comprobante ||
+    (recargas && recargas.find((r) => r.url_comprobante)?.url_comprobante) ||
+    null;
   const imgComprobante = await cargarImagenConDimensiones(fotoComprobanteUrl);
 
-  // Cálculo de altura total adaptativa
-  let alturaTotal = 115;
+  // 4. Cálculo de altura total adaptativa según el contenido
+  let alturaTotal = 118;
   if (capacidad || modelo) alturaTotal += 6;
   if (referencia) alturaTotal += 6;
 
-  if (imgCamion) {
-    const { h } = calcularDimensionesImagen(imgCamion.aspectRatio, 66, 44);
-    alturaTotal += h + 15;
+  // Si es un lote con múltiples recargas, sumar altura de la tabla de desglose
+  if (esLote) {
+    alturaTotal += 16 + recargasLista.length * 5.2;
   }
+
+  // Galería de fotos de los camiones
+  if (fotosCamionValidas.length === 1) {
+    const { h } = calcularDimensionesImagen(fotosCamionValidas[0].imgData.aspectRatio, 66, 44);
+    alturaTotal += h + 15;
+  } else if (fotosCamionValidas.length >= 2) {
+    const numFilas = Math.ceil(fotosCamionValidas.length / 2);
+    alturaTotal += 14 + numFilas * 35.5;
+  }
+
+  // Soporte bancario si existe
   if (imgComprobante) {
     const { h } = calcularDimensionesImagen(imgComprobante.aspectRatio, 66, 44);
     alturaTotal += h + 15;
   }
-  alturaTotal = Math.max(130, alturaTotal + 12);
+
+  alturaTotal = Math.max(130, alturaTotal + 15);
 
   const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: [80, alturaTotal] });
 
@@ -463,7 +661,10 @@ export async function generarComprobantePagoPDF(pago) {
   doc.setFontSize(8);
   doc.setFont("helvetica", "bold");
   doc.setTextColor(15, 23, 42);
-  doc.text(`N° RECIBO: REC-${numRecibo}`, 5, 28);
+  const reciboTexto = esLote
+    ? `N° RECIBO: REC-${numRecibo} (${recargasLista.length} RECARGAS)`
+    : `N° RECIBO: REC-${numRecibo}`;
+  doc.text(reciboTexto, 5, 28);
   doc.setFont("helvetica", "normal");
   doc.text(`Fecha: ${strFecha}  ${strHora}`, 5, 33);
 
@@ -500,7 +701,10 @@ export async function generarComprobantePagoPDF(pago) {
   doc.setFont("helvetica", "bold");
   doc.text("Concepto:", 5, curY);
   doc.setFont("helvetica", "normal");
-  doc.text("Cancelación de Recarga de Agua Cisterna", 22, curY);
+  const conceptoTexto = esLote
+    ? `Cancelación Consolidada de ${recargasLista.length} Recargas de Cisterna`
+    : "Cancelación de Recarga de Agua Cisterna";
+  doc.text(conceptoTexto, 22, curY);
 
   curY += 5.5;
   doc.setFont("helvetica", "bold");
@@ -530,6 +734,51 @@ export async function generarComprobantePagoPDF(pago) {
   doc.text("CONCILIADO Y PAGADO ✓", 18, curY);
   doc.setTextColor(15, 23, 42);
 
+  // TABLA DE DESGLOSE CUANDO SON MÚLTIPLES RECARGAS
+  if (esLote) {
+    curY += 6;
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(8);
+    doc.setTextColor(30, 41, 59);
+    doc.text(`DESGLOSE DE RECARGAS LIQUIDADAS (${recargasLista.length}):`, 5, curY);
+
+    curY += 3.5;
+    doc.setFillColor(241, 245, 249);
+    doc.rect(4, curY, 72, 5, "F");
+
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(6.8);
+    doc.setTextColor(71, 85, 105);
+    doc.text("#", 6, curY + 3.5);
+    doc.text("Fecha y Hora", 12, curY + 3.5);
+    doc.text("Capacidad", 48, curY + 3.5);
+    doc.text("Monto", 74, curY + 3.5, { align: "right" });
+
+    curY += 5.5;
+
+    recargasLista.forEach((r, idx) => {
+      const { fecha: fR, hora: hR } = extraerFechaHora(r.fecha_carga);
+      const capR = r.camiones?.capacidad || r.capacidad ? `${r.camiones?.capacidad || r.capacidad} L` : "--";
+      const montoR = Number(r.monto) || 0;
+
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(6.5);
+      doc.setTextColor(15, 23, 42);
+      doc.text(`${idx + 1}`, 6, curY + 3);
+      doc.text(`${fR} ${hR}`, 12, curY + 3);
+      doc.text(`${capR}`, 48, curY + 3);
+      doc.setFont("helvetica", "bold");
+      doc.text(`$${montoR.toFixed(2)}`, 74, curY + 3, { align: "right" });
+
+      curY += 4.5;
+    });
+
+    curY += 1;
+    doc.setDrawColor(203, 213, 225);
+    doc.setLineWidth(0.2);
+    doc.line(4, curY, 76, curY);
+  }
+
   curY += 5;
 
   // 5. Cuadro Destacado del Total Pagado
@@ -538,9 +787,10 @@ export async function generarComprobantePagoPDF(pago) {
   doc.rect(4, curY, 72, 12, "FD");
 
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(11);
+  doc.setFontSize(10.5);
   doc.setTextColor(21, 128, 61);
-  doc.text("TOTAL PAGADO:", 8, curY + 8);
+  const labelTotal = esLote ? `TOTAL PAGADO (${recargasLista.length}):` : "TOTAL PAGADO:";
+  doc.text(labelTotal, 8, curY + 8);
   doc.text(`$${monto.toFixed(2)} USD`, 72, curY + 8, { align: "right" });
 
   curY += 17;
@@ -549,21 +799,17 @@ export async function generarComprobantePagoPDF(pago) {
   doc.setFont("helvetica", "italic");
   doc.setFontSize(7.5);
   doc.setTextColor(71, 85, 105);
-  const textoFe =
-    "Por medio del presente documento, POZO TRINA MALAVER F.P. hace constar que ha recibido satisfactoriamente el importe descrito dando fe y solvencia del pago registrado.";
+  const textoFe = esLote
+    ? `Por medio del presente documento, POZO TRINA MALAVER F.P. hace constar que ha recibido satisfactoriamente el importe de $${monto.toFixed(2)} USD dando fe y solvencia del pago registrado por las ${recargasLista.length} recargas de agua cisterna detalladas.`
+    : "Por medio del presente documento, POZO TRINA MALAVER F.P. hace constar que ha recibido satisfactoriamente el importe descrito dando fe y solvencia del pago registrado.";
   const lineasFe = doc.splitTextToSize(textoFe, 70);
   doc.text(lineasFe, 5, curY);
   curY += lineasFe.length * 3.5 + 4;
 
-  // 7. 📸 FOTO DEL CAMIÓN EN POZO (Anexada de forma inteligente y cuadrada al comprobante de pago)
-  if (imgCamion) {
+  // 7. 📸 FOTOS DE LOS CAMIONES EN POZO (Acomodo inteligente individual o cuadrícula 2 columnas)
+  if (fotosCamionValidas.length > 0) {
     curY += 2;
-    curY = dibujarImagenEncuadrada(
-      doc,
-      imgCamion,
-      curY,
-      "Evidencia de la Cisterna Despachada"
-    );
+    curY = dibujarGaleriaFotosCamion(doc, fotosCamionValidas, curY);
   }
 
   // 8. Soporte Bancario si existe
@@ -603,6 +849,9 @@ export async function generarComprobantePagoPDF(pago) {
     referencia,
     strFecha,
     strHora,
+    esLote,
+    cantRecargas: recargasLista.length,
+    cantFotos: fotosCamionValidas.length,
   };
 }
 
@@ -791,24 +1040,85 @@ export async function avisarYCompartirNotaEntrega(datosNota) {
  * 5. MODAL PARA GENERAR COMPROBANTE DE PAGO DESDE EL MENÚ DE PAGOS
  * =========================================================================
  */
-export async function mostrarModalComprobantePago(pago) {
-  const { fecha: strFecha, hora: strHora } = extraerFechaHora(pago?.fecha_carga);
-  const placa = pago?.camiones?.placa || "Sin Placa";
-  const chofer = pago?.camiones?.chofer || "Cliente / Chofer";
+export async function mostrarModalComprobantePago(pago, listaPagosCompleta = null) {
+  // 1. Detectar si el pago agrupa varias recargas
+  let recargas = Array.isArray(pago?.recargas) && pago.recargas.length > 0
+    ? pago.recargas
+    : (Array.isArray(pago?.viajes) && pago.viajes.length > 0 ? pago.viajes : null);
+
+  if (!recargas && pago?.pago_id) {
+    if (Array.isArray(listaPagosCompleta) && listaPagosCompleta.length > 0) {
+      const hermanos = listaPagosCompleta.filter((p) => p.pago_id && p.pago_id === pago.pago_id);
+      if (hermanos.length > 1) {
+        recargas = hermanos;
+      }
+    }
+    if (!recargas) {
+      try {
+        const { data: siblingData } = await supabase
+          .from("registros_carga")
+          .select(`
+            id,
+            monto,
+            metodo,
+            referencia,
+            fecha_carga,
+            url_foto,
+            url_comprobante,
+            estatus,
+            pago_id,
+            camiones ( id, placa, chofer, capacidad, modelo, camionero_id, perfil_id )
+          `)
+          .eq("pago_id", pago.pago_id)
+          .order("fecha_carga", { ascending: true });
+
+        if (siblingData && siblingData.length > 1) {
+          recargas = siblingData;
+        }
+      } catch (errDb) {
+        console.warn("Fallo al buscar recargas hermanas del pago_id:", errDb);
+      }
+    }
+  }
+
+  const esLote = Boolean(recargas && recargas.length > 1);
+  const cantRecargas = esLote ? recargas.length : 1;
+  const montoTotal = esLote
+    ? recargas.reduce((sum, r) => sum + (Number(r.monto) || 0), 0)
+    : (Number(pago?.monto) || 0);
+
+  const camionBase = pago?.camiones || (recargas && recargas[0]?.camiones) || {};
+  const placa = camionBase?.placa || pago?.placa || "Sin Placa";
+  const chofer = camionBase?.chofer || pago?.chofer || "Cliente / Chofer";
   const cedulaCamionero = formatearCedula(
-    pago?.camiones?.cedula ||
-    pago?.camiones?.camioneros?.cedula ||
+    camionBase?.cedula ||
+    camionBase?.camioneros?.cedula ||
     pago?.cedula ||
     pago?.chofer_cedula
   );
-  const monto = Number(pago?.monto) || 0;
-  const metodo = pago?.metodo || "Efectivo";
-  const referencia = pago?.referencia || "Pago en Efectivo (Taquilla)";
-  const montoFormat = formatearMonto(monto);
-  const tieneFotoCamion = Boolean(pago?.url_foto || pago?.foto_camion);
+
+  const fechaReferencia =
+    pago?.fecha_carga ||
+    (recargas && recargas[recargas.length - 1]?.fecha_carga) ||
+    new Date().toISOString();
+  const { fecha: strFecha, hora: strHora } = extraerFechaHora(fechaReferencia);
+
+  const metodo = pago?.metodo || (recargas && recargas[0]?.metodo) || "Efectivo";
+  const referencia = pago?.referencia || (recargas && recargas[0]?.referencia) || "Pago en Efectivo (Taquilla)";
+  const montoFormat = formatearMonto(montoTotal);
+
+  // Conteo de fotos de camión registradas
+  let numFotosCamion = 0;
+  if (esLote) {
+    numFotosCamion = recargas.filter((r) => r.url_foto || r.foto_camion || r.fotoUrl).length;
+  } else {
+    numFotosCamion = (pago?.url_foto || pago?.foto_camion || pago?.fotoUrl) ? 1 : 0;
+  }
+
+  const pagoParaProcesar = esLote ? { ...pago, recargas, monto: montoTotal } : pago;
 
   const result = await Swal.fire({
-    title: "🧾 Comprobante Oficial de Pago",
+    title: esLote ? `🧾 Comprobante de Pago (${cantRecargas} Recargas)` : "🧾 Comprobante Oficial de Pago",
     html: `
       <div class="pozo-alert-body" style="text-align: left; font-size: 14px; line-height: 1.6;">
         <p style="margin: 0 0 10px 0;">
@@ -823,6 +1133,11 @@ export async function mostrarModalComprobantePago(pago) {
             <span style="color: #94a3b8;">Unidad Cisterna:</span>
             <strong style="color: #00c3ff;">${placa}</strong>
           </div>
+          ${esLote ? `
+          <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+            <span style="color: #94a3b8;">Recargas Liquidadas:</span>
+            <strong style="color: #38bdf8;">${cantRecargas} viajes consolidados</strong>
+          </div>` : ""}
           <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
             <span style="color: #94a3b8;">Monto Pagado:</span>
             <strong style="color: #22c55e; font-size: 16px;">${montoFormat}</strong>
@@ -839,9 +1154,9 @@ export async function mostrarModalComprobantePago(pago) {
             <span style="color: #94a3b8;">Fecha y Hora:</span>
             <span style="color: #f8fafc;">${strFecha} ${strHora}</span>
           </div>
-          ${tieneFotoCamion ? `
+          ${numFotosCamion > 0 ? `
           <div style="margin-top: 8px; padding-top: 6px; border-top: 1px dashed rgba(255,255,255,0.1); color: #38bdf8; font-size: 12px; display: flex; align-items: center; gap: 6px;">
-            <span>📸</span> <span>Incluye foto de la cisterna registrada en pozo</span>
+            <span>📸</span> <span>${numFotosCamion === 1 ? "1 foto de la cisterna en pozo anexada" : `${numFotosCamion} fotos de cisternas acomodadas en cuadrícula`}</span>
           </div>` : ""}
         </div>
         <p style="margin: 0; color: #94a3b8; font-size: 12px;">
@@ -869,7 +1184,7 @@ export async function mostrarModalComprobantePago(pago) {
 
   if (result.isConfirmed) {
     try {
-      const resPdf = await generarComprobantePagoPDF(pago);
+      const resPdf = await generarComprobantePagoPDF(pagoParaProcesar);
 
       await compartirODescargarPDF({
         doc: resPdf.doc,
@@ -880,13 +1195,14 @@ export async function mostrarModalComprobantePago(pago) {
 
       const textoWhatsApp =
         `💧 *POZO TRINA MALAVER F.P.*\n` +
-        `🧾 *COMPROBANTE DE PAGO*\n` +
+        `🧾 *COMPROBANTE DE PAGO${resPdf.esLote ? ` (${resPdf.cantRecargas} RECARGAS)` : ""}*\n` +
         `N° REC-${resPdf.numRecibo}\n` +
         `----------------------------------------\n` +
         `📅 *Fecha:* ${resPdf.strFecha} ${resPdf.strHora}\n` +
         `👤 *Cliente / Chofer:* ${chofer}${resPdf.cedula ? ` (C.I. ${resPdf.cedula})` : ""}\n` +
         `🚚 *Placa Unidad:* ${placa}\n` +
-        `💰 *Total Pagado:* $${monto.toFixed(2)} USD\n` +
+        (resPdf.esLote ? `📦 *Recargas Consolidadas:* ${resPdf.cantRecargas} viajes\n` : "") +
+        `💰 *Total Pagado:* $${Number(resPdf.monto).toFixed(2)} USD\n` +
         `💳 *Método:* ${metodo}\n` +
         (referencia && referencia !== "Pago en Efectivo (Taquilla)" ? `🔢 *Referencia:* ${referencia}\n` : "") +
         `✅ *Estatus:* CONCILIADO Y PAGADO\n` +
@@ -896,7 +1212,7 @@ export async function mostrarModalComprobantePago(pago) {
         title: "Comprobante Generado",
         html: `
           <div class="pozo-alert-body" style="font-size: 14px; color: #cbd5e1;">
-            <p>Se ha generado el archivo <b>${resPdf.nombreArchivo}</b> con la foto de la cisterna integrada.</p>
+            <p>Se ha generado el archivo <b>${resPdf.nombreArchivo}</b> ${resPdf.cantFotos > 1 ? `con ${resPdf.cantFotos} fotos de cisterna acomodadas en cuadrícula` : "con la foto de la cisterna integrada"}.</p>
             <p>¿Deseas enviar la constancia por WhatsApp?</p>
           </div>
         `,

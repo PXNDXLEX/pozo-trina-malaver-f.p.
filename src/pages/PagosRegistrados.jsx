@@ -305,6 +305,7 @@ export function PagosRegistrados() {
                   const { fecha, hora } = formatearFechaHora(pago.fecha_carga);
                   const tieneFotoCamion = Boolean(pago.url_foto);
                   const tieneComprobante = Boolean(pago.url_comprobante);
+                  const cantLote = pago.pago_id ? pagos.filter((p) => p.pago_id === pago.pago_id).length : 1;
 
                   return (
                     <tr key={pago.id}>
@@ -416,11 +417,15 @@ export function PagosRegistrados() {
                       <td style={{ textAlign: "center" }}>
                         <GenerateReceiptBtn
                           type="button"
-                          onClick={() => mostrarModalComprobantePago(pago)}
-                          title="Generar Comprobante Oficial de Pago dando fe del cobro registrado (PDF / Compartir)"
+                          onClick={() => mostrarModalComprobantePago(pago, pagos)}
+                          title={
+                            cantLote > 1
+                              ? `Generar Comprobante Oficial Consolidado de ${cantLote} recargas con fe de cobro y fotos en cuadrícula`
+                              : "Generar Comprobante Oficial de Pago dando fe del cobro registrado (PDF / Compartir)"
+                          }
                         >
                           <MdReceiptLong />
-                          <span>Comprobante</span>
+                          <span>{cantLote > 1 ? `Lote (${cantLote})` : "Comprobante"}</span>
                         </GenerateReceiptBtn>
                       </td>
                     </tr>
@@ -444,7 +449,7 @@ export function PagosRegistrados() {
                   {imagenModal.pago && (
                     <LightboxReceiptBtn
                       type="button"
-                      onClick={() => mostrarModalComprobantePago(imagenModal.pago)}
+                      onClick={() => mostrarModalComprobantePago(imagenModal.pago, pagos)}
                       title="Generar Comprobante Oficial de Pago"
                     >
                       <MdReceiptLong /> Comprobante PDF
