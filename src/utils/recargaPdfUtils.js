@@ -2,32 +2,45 @@ import { jsPDF } from "jspdf";
 import Swal from "sweetalert2";
 
 /**
- * Convierte un archivo, Blob o URL remota a base64 DataURL de forma segura y optimizada
+ * Convierte un archivo, Blob o URL remota a base64 DataURL
+ * y extrae sus dimensiones y relación de aspecto (aspect ratio) reales.
  */
-export async function cargarImagenBase64(urlOrBlob) {
+export async function cargarImagenConDimensiones(urlOrBlob) {
   if (!urlOrBlob) return null;
   try {
+    // 1. Caso File o Blob directo (subido desde el input o estado de React)
     if (typeof urlOrBlob !== "string" && (urlOrBlob instanceof Blob || urlOrBlob instanceof File)) {
-      return await new Promise((resolve) => {
+      const dataUri = await new Promise((resolve) => {
         const reader = new FileReader();
         reader.onloadend = () => resolve(reader.result);
         reader.onerror = () => resolve(null);
         reader.readAsDataURL(urlOrBlob);
       });
+      if (!dataUri) return null;
+      return await procesarDataUriConDimensiones(dataUri);
     }
 
+    // 2. Caso string (DataURL, Blob URL o URL remota de Supabase Storage)
     if (typeof urlOrBlob === "string") {
-      if (urlOrBlob.startsWith("data:image")) return urlOrBlob;
+      if (urlOrBlob.startsWith("data:image")) {
+        return await procesarDataUriConDimensiones(urlOrBlob);
+      }
 
       return await new Promise((resolve) => {
         const img = new Image();
-        img.crossOrigin = "anonymous";
+        // NOTA IMPORTANTE: En URLs blob: locales o data:, crossOrigin produce SecurityError en varios navegadores
+        if (!urlOrBlob.startsWith("blob:") && !urlOrBlob.startsWith("data:")) {
+          img.crossOrigin = "anonymous";
+        }
+
         img.onload = () => {
           try {
             const canvas = document.createElement("canvas");
-            const maxDim = 800;
-            let width = img.width;
-            let height = img.height;
+            const maxDim = 850;
+            let width = img.naturalWidth || img.width || 800;
+            let height = img.naturalHeight || img.height || 600;
+            const aspectRatio = width / (height || 1);
+
             if (width > maxDim || height > maxDim) {
               if (width > height) {
                 height = Math.round((height * maxDim) / width);
@@ -37,29 +50,105 @@ export async function cargarImagenBase64(urlOrBlob) {
                 height = maxDim;
               }
             }
+
             canvas.width = width;
             canvas.height = height;
             const ctx = canvas.getContext("2d");
             ctx.drawImage(img, 0, 0, width, height);
-            resolve(canvas.toDataURL("image/jpeg", 0.85));
+            const dataUri = canvas.toDataURL("image/jpeg", 0.88);
+
+            resolve({
+              dataUri,
+              width,
+              height,
+              aspectRatio: aspectRatio || 4 / 3,
+            });
           } catch (e) {
-            console.warn("Error convirtiendo canvas a dataURL:", e);
+            console.warn("Fallo procesando imagen a canvas:", e);
             resolve(null);
           }
         };
-        img.onerror = () => {
-          console.warn("No se pudo cargar la imagen:", urlOrBlob);
+
+        img.onerror = (e) => {
+          console.warn("No se pudo cargar la imagen:", urlOrBlob, e);
           resolve(null);
         };
-        setTimeout(() => resolve(null), 3500);
+
+        setTimeout(() => resolve(null), 4000);
         img.src = urlOrBlob;
       });
     }
   } catch (err) {
-    console.warn("Fallo general cargando imagen:", err);
+    console.warn("Fallo general en cargarImagenConDimensiones:", err);
     return null;
   }
   return null;
+}
+
+/**
+ * Helper para obtener dimensiones a partir de un DataURL
+ */
+function procesarDataUriConDimensiones(dataUri) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      const width = img.naturalWidth || img.width || 800;
+      const height = img.naturalHeight || img.height || 600;
+      resolve({
+        dataUri,
+        width,
+        height,
+        aspectRatio: width / (height || 1) || 4 / 3,
+      });
+    };
+    img.onerror = () => resolve(null);
+    img.src = dataUri;
+  });
+}
+
+/**
+ * Calcula las dimensiones y posición (x, w, h) para que la imagen quede
+ * perfectamente cuadrada, centrada y sin deformaciones dentro del ticket de 80mm.
+ */
+function calcularDimensionesImagen(aspectRatio = 1.33, maxW = 66, maxH = 46) {
+  let w = maxW;
+  let h = w / aspectRatio;
+
+  if (h > maxH) {
+    h = maxH;
+    w = h * aspectRatio;
+  }
+
+  // Centrado horizontal en el ticket de 80mm
+  const x = Number(((80 - w) / 2).toFixed(2));
+  return { x, w: Number(w.toFixed(2)), h: Number(h.toFixed(2)) };
+}
+
+/**
+ * Dibuja de manera inteligente la imagen encuadrada con marco y centrado estético
+ */
+function dibujarImagenEncuadrada(doc, imgData, y, etiqueta) {
+  const { x, w, h } = calcularDimensionesImagen(imgData.aspectRatio, 66, 46);
+
+  // Etiqueta del encabezado de la foto
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(8);
+  doc.setTextColor(51, 65, 85);
+  doc.text(etiqueta, 40, y, { align: "center" });
+
+  const imgY = y + 2.5;
+
+  // Fondo sutil y marco con bordes redondeados para un acabado cuadrado y prolijo
+  doc.setFillColor(241, 245, 249);
+  doc.setDrawColor(203, 213, 225);
+  doc.setLineWidth(0.35);
+  doc.roundedRect(x - 1, imgY - 1, w + 2, h + 2, 2, 2, "FD");
+
+  // Inserción de la imagen sin distorsión
+  doc.addImage(imgData.dataUri, "JPEG", x, imgY, w, h);
+
+  // Retorna la nueva coordenada vertical Y para que el texto continúe abajo de forma armónica
+  return imgY + h + 6;
 }
 
 /**
@@ -87,7 +176,7 @@ export function extraerFechaHora(fechaValor) {
  * =========================================================================
  * 1. GENERADOR DE NOTA DE ENTREGA / DESPACHO DE RECARGA (TICKET 80mm)
  * =========================================================================
- * Certifica el suministro operativo de agua a la cisterna en el pozo.
+ * Integra de manera inteligente la foto del camión tomada en pozo.
  */
 export async function generarNotaEntregaPDF({
   camion,
@@ -105,17 +194,21 @@ export async function generarNotaEntregaPDF({
   const chofer = camion?.chofer || "No Especificado";
   const capacidad = camion?.capacidad ? `${camion.capacidad} Lts` : null;
 
-  // Carga previa de foto si existe
-  const fotoBase64 = await cargarImagenBase64(fotoUrl);
+  // Carga inteligente de la foto del camión con proporciones reales
+  const imgCamion = await cargarImagenConDimensiones(fotoUrl);
 
-  // Cálculo dinámico de altura del ticket
-  let alturaTotal = 85;
+  // Cálculo dinámico de altura total del ticket
+  let alturaTotal = 90;
   if (capacidad) alturaTotal += 6;
   if (metodo && metodo !== "Efectivo") alturaTotal += 6;
   if (referencia) alturaTotal += 6;
   if (nota && nota.trim()) alturaTotal += 14;
-  if (fotoBase64) alturaTotal += 58;
-  alturaTotal = Math.max(120, alturaTotal);
+
+  if (imgCamion) {
+    const { h } = calcularDimensionesImagen(imgCamion.aspectRatio, 66, 46);
+    alturaTotal += h + 15;
+  }
+  alturaTotal = Math.max(125, alturaTotal + 10);
 
   const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: [80, alturaTotal] });
 
@@ -193,7 +286,7 @@ export async function generarNotaEntregaPDF({
 
   curY += 5;
 
-  // 5. Caja destacada de TOTAL (Igual a la imagen adjunta)
+  // 5. Caja destacada de TOTAL
   doc.setFillColor(241, 245, 249);
   doc.rect(4, curY, 72, 12, "F");
 
@@ -229,24 +322,19 @@ export async function generarNotaEntregaPDF({
     curY += (lineasNota.length - 1) * 4;
   }
 
-  // 8. Registro Fotográfico (Cisterna en pozo)
-  if (fotoBase64) {
-    curY += 8;
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(8.5);
-    doc.setTextColor(30, 41, 59);
-    doc.text("Registro Fotográfico:", 5, curY);
-    curY += 3;
-    try {
-      doc.addImage(fotoBase64, "JPEG", 10, curY, 60, 45);
-      curY += 47;
-    } catch (e) {
-      console.warn("No se pudo agregar imagen al ticket:", e);
-    }
+  // 8. 📸 Registro Fotográfico del Camión en Pozo (Encuadrado de manera inteligente)
+  if (imgCamion) {
+    curY += 7;
+    curY = dibujarImagenEncuadrada(
+      doc,
+      imgCamion,
+      curY,
+      "Registro Fotográfico de la Cisterna en Pozo"
+    );
   }
 
   // 9. Pie de página
-  curY = Math.max(curY + 4, alturaTotal - 7);
+  curY = Math.max(curY + 3, alturaTotal - 7);
   doc.setFont("helvetica", "normal");
   doc.setFontSize(7.5);
   doc.setTextColor(148, 163, 184);
@@ -272,7 +360,7 @@ export async function generarNotaEntregaPDF({
  * =========================================================================
  * 2. GENERADOR DE COMPROBANTE DE PAGO (RECIBO OFICIAL DE CAJA - 80mm)
  * =========================================================================
- * Da fe jurídica y administrativa del cobro recibido por la persona/chofer.
+ * Da fe del pago y anexa también la foto del camión cisterna registrada.
  */
 export async function generarComprobantePagoPDF(pago) {
   const { fecha: strFecha, hora: strHora } = extraerFechaHora(pago?.fecha_carga);
@@ -285,14 +373,28 @@ export async function generarComprobantePagoPDF(pago) {
   const monto = Number(pago?.monto) || 0;
   const numRecibo = String(pago?.id || Date.now()).replace(/\D/g, "").slice(-6) || "001234";
 
-  // Carga de foto de comprobante si existe
-  const fotoComprobanteBase64 = await cargarImagenBase64(pago?.url_comprobante);
+  // 📸 Carga inteligente de la foto del camión de la recarga (url_foto)
+  const fotoCamionUrl = pago?.url_foto || pago?.foto_camion || pago?.fotoUrl || null;
+  const imgCamion = await cargarImagenConDimensiones(fotoCamionUrl);
 
-  let alturaTotal = 110;
+  // Carga del soporte bancario si existe (url_comprobante)
+  const fotoComprobanteUrl = pago?.url_comprobante || null;
+  const imgComprobante = await cargarImagenConDimensiones(fotoComprobanteUrl);
+
+  // Cálculo de altura total adaptativa
+  let alturaTotal = 115;
   if (capacidad || modelo) alturaTotal += 6;
   if (referencia) alturaTotal += 6;
-  if (fotoComprobanteBase64) alturaTotal += 58;
-  alturaTotal = Math.max(130, alturaTotal);
+
+  if (imgCamion) {
+    const { h } = calcularDimensionesImagen(imgCamion.aspectRatio, 66, 44);
+    alturaTotal += h + 15;
+  }
+  if (imgComprobante) {
+    const { h } = calcularDimensionesImagen(imgComprobante.aspectRatio, 66, 44);
+    alturaTotal += h + 15;
+  }
+  alturaTotal = Math.max(130, alturaTotal + 12);
 
   const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: [80, alturaTotal] });
 
@@ -407,22 +509,29 @@ export async function generarComprobantePagoPDF(pago) {
   doc.text(lineasFe, 5, curY);
   curY += lineasFe.length * 3.5 + 4;
 
-  // 7. Soporte Bancario si existe
-  if (fotoComprobanteBase64) {
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(8);
-    doc.setTextColor(30, 41, 59);
-    doc.text("Soporte de Pago Verificado:", 5, curY);
-    curY += 3;
-    try {
-      doc.addImage(fotoComprobanteBase64, "JPEG", 10, curY, 60, 45);
-      curY += 47;
-    } catch (e) {
-      console.warn("No se pudo agregar imagen de soporte bancario:", e);
-    }
+  // 7. 📸 FOTO DEL CAMIÓN EN POZO (Anexada de forma inteligente y cuadrada al comprobante de pago)
+  if (imgCamion) {
+    curY += 2;
+    curY = dibujarImagenEncuadrada(
+      doc,
+      imgCamion,
+      curY,
+      "Evidencia de la Cisterna Despachada"
+    );
   }
 
-  // 8. Pie y Sello de Administración
+  // 8. Soporte Bancario si existe
+  if (imgComprobante) {
+    curY += 2;
+    curY = dibujarImagenEncuadrada(
+      doc,
+      imgComprobante,
+      curY,
+      "Soporte Bancario Verificado"
+    );
+  }
+
+  // 9. Pie y Sello de Administración
   curY = Math.max(curY + 2, alturaTotal - 10);
   doc.setFont("helvetica", "bold");
   doc.setFontSize(7.5);
@@ -501,7 +610,7 @@ export function compartirPorWhatsApp(texto) {
  * =========================================================================
  */
 export async function avisarYCompartirNotaEntrega(datosNota) {
-  const { camion, monto, metodo, referencia, estatus } = datosNota;
+  const { camion, monto, metodo, referencia, estatus, fotoUrl } = datosNota;
   const placa = camion?.placa || "Unidad Cisterna";
   const chofer = camion?.chofer || "Sin Chofer";
   const esPagado = String(estatus).toLowerCase() === "pagado";
@@ -533,6 +642,10 @@ export async function avisarYCompartirNotaEntrega(datosNota) {
           <div style="display: flex; justify-content: space-between; margin-top: 4px; font-size: 12px;">
             <span style="color: #94a3b8;">N° Referencia:</span>
             <span style="color: #f8fafc;">${referencia}</span>
+          </div>` : ""}
+          ${fotoUrl ? `
+          <div style="margin-top: 8px; padding-top: 6px; border-top: 1px dashed rgba(255,255,255,0.1); color: #38bdf8; font-size: 12px; display: flex; align-items: center; gap: 6px;">
+            <span>📸</span> <span>Foto de la cisterna anexada y encuadrada</span>
           </div>` : ""}
         </div>
         <p style="margin: 0; color: #f8fafc; font-weight: 500; font-size: 14px;">
@@ -588,7 +701,7 @@ export async function avisarYCompartirNotaEntrega(datosNota) {
         title: "Nota de Entrega Lista",
         html: `
           <div class="pozo-alert-body" style="font-size: 14px; color: #cbd5e1;">
-            <p>Se ha generado el archivo <b>${resultadoPdf.nombreArchivo}</b>.</p>
+            <p>Se ha generado el archivo <b>${resultadoPdf.nombreArchivo}</b> con la foto del camión encuadrada.</p>
             <p>¿Deseas enviar un resumen rápido por WhatsApp?</p>
           </div>
         `,
@@ -639,6 +752,7 @@ export async function mostrarModalComprobantePago(pago) {
   const metodo = pago?.metodo || "Efectivo";
   const referencia = pago?.referencia || "Pago en Efectivo (Taquilla)";
   const montoFormat = formatearMonto(monto);
+  const tieneFotoCamion = Boolean(pago?.url_foto || pago?.foto_camion);
 
   const result = await Swal.fire({
     title: "🧾 Comprobante Oficial de Pago",
@@ -672,6 +786,10 @@ export async function mostrarModalComprobantePago(pago) {
             <span style="color: #94a3b8;">Fecha y Hora:</span>
             <span style="color: #f8fafc;">${strFecha} ${strHora}</span>
           </div>
+          ${tieneFotoCamion ? `
+          <div style="margin-top: 8px; padding-top: 6px; border-top: 1px dashed rgba(255,255,255,0.1); color: #38bdf8; font-size: 12px; display: flex; align-items: center; gap: 6px;">
+            <span>📸</span> <span>Incluye foto de la cisterna registrada en pozo</span>
+          </div>` : ""}
         </div>
         <p style="margin: 0; color: #94a3b8; font-size: 12px;">
           ℹ️ Este documento certifica la solvencia financiera y da fe legal de la recepción conforme de los fondos.
@@ -725,7 +843,7 @@ export async function mostrarModalComprobantePago(pago) {
         title: "Comprobante Generado",
         html: `
           <div class="pozo-alert-body" style="font-size: 14px; color: #cbd5e1;">
-            <p>Se ha generado el archivo <b>${resPdf.nombreArchivo}</b>.</p>
+            <p>Se ha generado el archivo <b>${resPdf.nombreArchivo}</b> con la foto de la cisterna integrada.</p>
             <p>¿Deseas enviar la constancia por WhatsApp?</p>
           </div>
         `,
@@ -762,4 +880,3 @@ export async function mostrarModalComprobantePago(pago) {
     }
   }
 }
-

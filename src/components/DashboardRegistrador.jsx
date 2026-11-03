@@ -289,7 +289,7 @@ export function DashboardRegistrador() {
         fecha: fechaActual,
         nota: nota.trim(),
         estatus: estatusFinal,
-        fotoUrl: previewCamion || urlFotoCamion,
+        fotoUrl: previewCamion || fotoCamion || urlFotoCamion,
       };
 
       limpiarCampos();

@@ -659,7 +659,7 @@ export function ModalRegistrarRecarga({ isOpen, onClose, onRecargaExitosa }) {
         fecha: fechaActual,
         nota: nota.trim(),
         estatus: estatusFinal,
-        fotoUrl: previewCamion || urlFotoCamion,
+        fotoUrl: previewCamion || fotoCamion || urlFotoCamion,
       };
 
       limpiarTodo();
