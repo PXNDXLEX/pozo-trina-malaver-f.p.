@@ -304,9 +304,23 @@ export function formatearMonto(val) {
 export function extraerFechaHora(fechaValor) {
   const f = fechaValor ? new Date(fechaValor) : new Date();
   const fechaValida = isNaN(f.getTime()) ? new Date() : f;
+
+  const dia = fechaValida.getDate();
+  const mes = fechaValida.getMonth() + 1;
+  const anio = fechaValida.getFullYear();
+  const strFecha = `${dia}/${mes}/${anio}`;
+
+  let horas = fechaValida.getHours();
+  const minutos = String(fechaValida.getMinutes()).padStart(2, "0");
+  const segundos = String(fechaValida.getSeconds()).padStart(2, "0");
+  const ampm = horas >= 12 ? "p.m." : "a.m.";
+  horas = horas % 12;
+  horas = horas ? horas : 12;
+  const strHora = `${horas}:${minutos}:${segundos} ${ampm}`;
+
   return {
-    fecha: fechaValida.toLocaleDateString("es-ES", { day: "numeric", month: "numeric", year: "numeric" }),
-    hora: fechaValida.toLocaleTimeString("es-ES", { hour: "numeric", minute: "2-digit", second: "2-digit", hour12: true }),
+    fecha: strFecha,
+    hora: strHora,
     iso: fechaValida.toISOString(),
   };
 }
@@ -1024,6 +1038,157 @@ export async function avisarYCompartirNotaEntrega(datosNota) {
       });
     } catch (errPdf) {
       console.error("Error al generar la nota de entrega:", errPdf);
+      Swal.fire({
+        icon: "error",
+        title: "Error al generar PDF",
+        text: errPdf.message || "No se pudo procesar la nota de entrega.",
+        background: "#131c2e",
+        color: "#f8fafc",
+      });
+    }
+  }
+}
+
+/**
+ * =========================================================================
+ * 4.1 MODAL PARA GENERAR NOTA DE ENTREGA DESDE EL HISTORIAL DE RECARGAS
+ * =========================================================================
+ * Extrae estrictamente la fecha y hora original guardada en el registro (fecha_carga)
+ */
+export async function mostrarModalNotaEntregaHistorica(datosNota) {
+  const { camion, monto, metodo, referencia, estatus, fotoUrl, cedula, fecha } = datosNota;
+  const placa = camion?.placa || "Unidad Cisterna";
+  const chofer = camion?.chofer || "Sin Chofer";
+  const cedulaCamionero = formatearCedula(cedula || camion?.cedula || camion?.camioneros?.cedula);
+  const esPagado = String(estatus).toLowerCase() === "pagado";
+  const montoFormat = formatearMonto(monto);
+
+  // ⚠️ Extraemos estrictamente la fecha y hora de registro guardada en la base de datos
+  const { fecha: strFecha, hora: strHora } = extraerFechaHora(fecha);
+
+  const result = await Swal.fire({
+    title: "📄 Nota de Entrega de Recarga",
+    html: `
+      <div class="pozo-alert-body" style="text-align: left; font-size: 14px; line-height: 1.6;">
+        <p style="margin: 0 0 10px 0; color: #cbd5e1;">
+          Información del despacho registrado:
+        </p>
+        <div style="background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(0, 195, 255, 0.25); border-radius: 12px; padding: 12px 14px; margin-bottom: 14px;">
+          <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
+            <span style="color: #94a3b8;">📅 Fecha de Registro:</span>
+            <strong style="color: #f8fafc;">${strFecha} &bull; ${strHora}</strong>
+          </div>
+          <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
+            <span style="color: #94a3b8;">🚛 Placa / Chofer:</span>
+            <strong style="color: #00c3ff;">${placa} (${chofer}${cedulaCamionero ? ` - C.I. ${cedulaCamionero}` : ""})</strong>
+          </div>
+          ${camion?.capacidad ? `
+          <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
+            <span style="color: #94a3b8;">💧 Capacidad:</span>
+            <span style="color: #f8fafc;">${Number(camion.capacidad).toLocaleString()} Lts</span>
+          </div>` : ""}
+          <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
+            <span style="color: #94a3b8;">💵 Monto Despachado:</span>
+            <strong style="color: #22c55e; font-size: 15px;">${montoFormat}</strong>
+          </div>
+          <div style="display: flex; justify-content: space-between;">
+            <span style="color: #94a3b8;">📋 Estado del Cobro:</span>
+            <strong style="color: ${esPagado ? "#22c55e" : "#f59e0b"};">
+              ${esPagado ? `Pagado (${metodo || "Efectivo"})` : "Pendiente en Cuentas por Cobrar"}
+            </strong>
+          </div>
+          ${referencia ? `
+          <div style="display: flex; justify-content: space-between; margin-top: 5px; font-size: 12px;">
+            <span style="color: #94a3b8;">N° Referencia:</span>
+            <span style="color: #f8fafc;">${referencia}</span>
+          </div>` : ""}
+          ${fotoUrl ? `
+          <div style="margin-top: 8px; padding-top: 6px; border-top: 1px dashed rgba(255,255,255,0.1); color: #38bdf8; font-size: 12px; display: flex; align-items: center; gap: 6px;">
+            <span>📸</span> <span>Foto de la cisterna anexada al documento</span>
+          </div>` : ""}
+        </div>
+        <p style="margin: 0; color: #f8fafc; font-weight: 500; font-size: 14px;">
+          ¿Deseas generar la <b>Nota de Entrega</b> en formato ticket PDF para imprimir o compartir?
+        </p>
+      </div>
+    `,
+    icon: "info",
+    showCancelButton: true,
+    confirmButtonText: "📄 Generar y Compartir Nota",
+    cancelButtonText: "Cerrar",
+    buttonsStyling: false,
+    background: "#131c2e",
+    color: "#f8fafc",
+    backdrop: "rgba(11, 15, 25, 0.8)",
+    customClass: {
+      popup: "pozo-swal-popup",
+      title: "pozo-swal-title",
+      htmlContainer: "pozo-swal-html",
+      actions: "pozo-swal-actions",
+      confirmButton: "pozo-swal-confirm-btn",
+      cancelButton: "pozo-swal-cancel-btn",
+    },
+  });
+
+  if (result.isConfirmed) {
+    try {
+      // 1. Generar la Nota de Entrega PDF con la fecha y hora original
+      const resultadoPdf = await generarNotaEntregaPDF(datosNota);
+
+      // 2. Descargar o compartir con Web Share API
+      await compartirODescargarPDF({
+        doc: resultadoPdf.doc,
+        nombreArchivo: resultadoPdf.nombreArchivo,
+        titulo: `Nota de Entrega - ${placa}`,
+        texto: `Nota de Entrega de recarga de agua para la unidad cisterna ${placa} (${chofer}) del ${strFecha} a las ${strHora}.`,
+      });
+
+      // 3. Ofrecer opción directa de WhatsApp
+      const textoWhatsApp =
+        `💧 *POZO TRINA MALAVER F.P.*\n` +
+        `📄 *NOTA DE ENTREGA / DESPACHO*\n` +
+        `----------------------------------------\n` +
+        `📅 *Fecha de Registro:* ${resultadoPdf.strFecha} ${resultadoPdf.strHora}\n` +
+        `🚚 *Placa Cisterna:* ${placa}\n` +
+        `👤 *Chofer:* ${chofer}${resultadoPdf.cedula ? ` (C.I. ${resultadoPdf.cedula})` : ""}\n` +
+        (camion?.capacidad ? `💧 *Capacidad:* ${Number(camion.capacidad).toLocaleString()} Lts\n` : "") +
+        `💵 *Monto:* ${montoFormat}\n` +
+        `📌 *Estado:* ${esPagado ? `PAGADO (${metodo || "Efectivo"})` : "CARGADO A CRÉDITO (DEUDA)"}\n` +
+        (referencia ? `🔢 *Referencia:* ${referencia}\n` : "") +
+        `----------------------------------------\n` +
+        `_Comprobante oficial emitido por Pozo Trina Malaver F.P._`;
+
+      Swal.fire({
+        title: "Nota de Entrega Lista",
+        html: `
+          <div class="pozo-alert-body" style="font-size: 14px; color: #cbd5e1;">
+            <p>Se ha generado el archivo <b>${resultadoPdf.nombreArchivo}</b> con la fecha original del registro (${strFecha} ${strHora}).</p>
+            <p style="margin-top: 10px; color: #38bdf8;">¿Deseas enviar el resumen de la nota por WhatsApp?</p>
+          </div>
+        `,
+        icon: "success",
+        showCancelButton: true,
+        confirmButtonText: "💬 Enviar por WhatsApp",
+        cancelButtonText: "Listo, Finalizar",
+        buttonsStyling: false,
+        background: "#131c2e",
+        color: "#f8fafc",
+        backdrop: "rgba(11, 15, 25, 0.8)",
+        customClass: {
+          popup: "pozo-swal-popup",
+          title: "pozo-swal-title",
+          htmlContainer: "pozo-swal-html",
+          actions: "pozo-swal-actions",
+          confirmButton: "pozo-swal-confirm-btn",
+          cancelButton: "pozo-swal-cancel-btn",
+        },
+      }).then((resWa) => {
+        if (resWa.isConfirmed) {
+          compartirPorWhatsApp(textoWhatsApp);
+        }
+      });
+    } catch (errPdf) {
+      console.error("Error al generar la nota de entrega histórica:", errPdf);
       Swal.fire({
         icon: "error",
         title: "Error al generar PDF",

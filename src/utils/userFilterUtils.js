@@ -28,3 +28,4 @@ export async function filtrarRegistrosPorUsuario(queryBuilder, userId) {
     return queryBuilder.eq("foto_referencia", userId);
   }
 }
+

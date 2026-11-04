@@ -16,11 +16,13 @@ import {
   MdHourglassEmpty,
   MdPhotoCamera,
   MdClose,
-  MdReceipt
+  MdReceipt,
+  MdReceiptLong
 } from "react-icons/md";
 
 import { useAuthStore } from "../store/AuthStore";
 import { filtrarRegistrosPorUsuario } from "../utils/userFilterUtils";
+import { mostrarModalNotaEntregaHistorica } from "../utils/recargaPdfUtils";
 
 export function TablaDetcon({ refresh }) {
   const user = useAuthStore((state) => state.user);
@@ -172,7 +174,15 @@ export function TablaDetcon({ refresh }) {
           fecha_carga,
           url_foto,
           estatus,
-          camiones ( placa, chofer, capacidad, modelo )
+          camiones (
+            id,
+            placa,
+            chofer,
+            capacidad,
+            modelo,
+            camionero_id,
+            camioneros ( id, cedula, nombre )
+          )
         `)
         .order("fecha_carga", { ascending: false });
 
@@ -322,6 +332,34 @@ export function TablaDetcon({ refresh }) {
     } catch (error) {
       alert("Error al crear el PDF: " + error.message);
     }
+  };
+
+  // 📄 Generar Nota de Entrega oficial con la fecha y hora original guardada en registros_carga
+  const handleGenerarNota = (item) => {
+    if (!item) return;
+
+    // ⚠️ OJO: Los datos de fecha y hora se toman estrictamente de item.fecha_carga
+    // (el momento exacto en que se registró la recarga), NO de la hora actual en que se pide la nota.
+    const fechaOriginalRegistro = item.fecha_carga;
+
+    const cedulaChofer =
+      item.camiones?.camioneros?.cedula ||
+      item.camiones?.cedula ||
+      null;
+
+    const datosNota = {
+      camion: item.camiones,
+      cedula: cedulaChofer,
+      monto: Number(item.monto) || 0,
+      metodo: item.metodo || "Efectivo",
+      referencia: item.referencia || null,
+      fecha: fechaOriginalRegistro, // ⚠️ FECHA Y HORA ORIGINAL DE REGISTRO
+      nota: item.nota || "",
+      estatus: item.estatus,
+      fotoUrl: item.url_foto || null,
+    };
+
+    mostrarModalNotaEntregaHistorica(datosNota);
   };
 
   const seleccionarHoy = () => {
@@ -508,6 +546,11 @@ export function TablaDetcon({ refresh }) {
                 <th>Estado</th>
                 <th>Nota / Novedad</th>
                 <th style={{ textAlign: "center" }}>Foto</th>
+                {user?.role === "administrador" && (
+                  <th style={{ textAlign: "center" }}>
+                    <MdReceiptLong className="th-icon" /> Nota de Entrega
+                  </th>
+                )}
               </tr>
             </thead>
             <tbody>
@@ -587,6 +630,7 @@ export function TablaDetcon({ refresh }) {
                               chofer: item.camiones?.chofer,
                               monto: item.monto,
                               hora: `${fechaCorta} ${horaStr}`,
+                              item,
                             })
                           }
                           title="Ver evidencia fotográfica"
@@ -598,6 +642,20 @@ export function TablaDetcon({ refresh }) {
                         <span className="sin-foto">-</span>
                       )}
                     </td>
+
+                    {/* NOTA DE ENTREGA (SOLO ADMINISTRADOR) */}
+                    {user?.role === "administrador" && (
+                      <td style={{ textAlign: "center" }}>
+                        <BotonNotaTicket
+                          type="button"
+                          onClick={() => handleGenerarNota(item)}
+                          title="Generar y compartir Nota de Entrega oficial con la fecha y hora original del registro"
+                        >
+                          <MdReceiptLong />
+                          <span>Nota</span>
+                        </BotonNotaTicket>
+                      </td>
+                    )}
                   </tr>
                 );
               })}
@@ -615,9 +673,20 @@ export function TablaDetcon({ refresh }) {
                 <h4>Evidencia de Recarga — {fotoModal.placa}</h4>
                 <p>Chofer: {fotoModal.chofer} | {fotoModal.hora} | ${fotoModal.monto}</p>
               </div>
-              <button className="close-btn" onClick={() => setFotoModal(null)}>
-                <MdClose />
-              </button>
+              <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
+                {user?.role === "administrador" && fotoModal.item && (
+                  <LightboxNotaBtn
+                    type="button"
+                    onClick={() => handleGenerarNota(fotoModal.item)}
+                    title="Generar Nota de Entrega oficial con la fecha y hora original"
+                  >
+                    <MdReceiptLong /> Nota PDF
+                  </LightboxNotaBtn>
+                )}
+                <button className="close-btn" onClick={() => setFotoModal(null)}>
+                  <MdClose />
+                </button>
+              </div>
             </ModalHeader>
             <div className="img-box">
               <img src={fotoModal.url} alt="Evidencia ampliada" />
@@ -1212,5 +1281,60 @@ const ModalHeader = styled.div`
     &:hover {
       color: #ffffff;
     }
+  }
+`;
+
+const BotonNotaTicket = styled.button`
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  background: rgba(0, 195, 255, 0.12);
+  border: 1px solid rgba(0, 195, 255, 0.35);
+  color: #38bdf8;
+  padding: 5px 10px;
+  border-radius: 8px;
+  font-size: 11.5px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+
+  &:hover {
+    background: rgba(0, 195, 255, 0.25);
+    border-color: #00c3ff;
+    color: #ffffff;
+    box-shadow: 0 0 12px rgba(0, 195, 255, 0.35);
+    transform: translateY(-1px);
+  }
+
+  svg {
+    font-size: 14px;
+  }
+`;
+
+const LightboxNotaBtn = styled.button`
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(0, 195, 255, 0.2);
+  border: 1px solid rgba(0, 195, 255, 0.4);
+  color: #38bdf8;
+  padding: 6px 12px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+
+  &:hover {
+    background: #00c3ff;
+    color: #0f172a;
+    border-color: #00c3ff;
+  }
+
+  svg {
+    font-size: 15px;
   }
 `;
