@@ -1011,6 +1011,7 @@ export function DashboardCamionero() {
         isOpen={modalRecargaAbierto}
         onClose={() => setModalRecargaAbierto(false)}
         onRecargaExitosa={cargarDatosCamionero}
+        camionesIniciales={misCamiones}
       />
     </Container>
   );

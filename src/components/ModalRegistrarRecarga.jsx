@@ -27,7 +27,12 @@ import {
   MdDelete,
 } from "react-icons/md";
 
-export function ModalRegistrarRecarga({ isOpen, onClose, onRecargaExitosa }) {
+export function ModalRegistrarRecarga({
+  isOpen,
+  onClose,
+  onRecargaExitosa,
+  camionesIniciales = [],
+}) {
   const user = useAuthStore((state) => state.user);
 
   // Estados de navegación interna del modal:
@@ -94,9 +99,19 @@ export function ModalRegistrarRecarga({ isOpen, onClose, onRecargaExitosa }) {
     setBusquedaCamionGrid("");
 
     try {
-      if (user?.role === "camionero" && user?.id) {
+      const esCamionero = user?.role === "camionero" || user?.rol === "camionero";
+
+      if (esCamionero && user?.id) {
         // --- 1. FLUJO CAMIONERO ---
         const trucksMap = new Map();
+        let cRow = null;
+
+        // Si ya nos pasaron camiones iniciales pre-cargados (ej. desde el dashboard), utilizarlos de inmediato
+        if (Array.isArray(camionesIniciales) && camionesIniciales.length > 0) {
+          camionesIniciales.forEach((t) => {
+            if (t && t.id) trucksMap.set(t.id, t);
+          });
+        }
 
         try {
           // Buscar ficha del chofer por perfil_id o por cédula
@@ -106,7 +121,7 @@ export function ModalRegistrarRecarga({ isOpen, onClose, onRecargaExitosa }) {
             .eq("perfil_id", user.id)
             .maybeSingle();
 
-          let cRow = cRowData;
+          cRow = cRowData;
           if (!cRow && user?.cedula) {
             const { data: cByCed } = await supabase
               .from("camioneros")
@@ -122,7 +137,7 @@ export function ModalRegistrarRecarga({ isOpen, onClose, onRecargaExitosa }) {
             setChoferSeleccionado(cRow);
           }
 
-          // Camiones por camionero_id
+          // 2. Camiones por camionero_id
           if (cRow?.id) {
             const { data: trucksCam } = await supabase
               .from("camiones")
@@ -137,7 +152,7 @@ export function ModalRegistrarRecarga({ isOpen, onClose, onRecargaExitosa }) {
             });
           }
 
-          // Camiones por perfil_id directo
+          // 3. Camiones por perfil_id directo (igual a DashboardCamionero)
           const { data: misCamiones } = await supabase
             .from("camiones")
             .select("id, placa, chofer, capacidad, modelo, perfil_id, camionero_id")
@@ -145,8 +160,7 @@ export function ModalRegistrarRecarga({ isOpen, onClose, onRecargaExitosa }) {
 
           (misCamiones || []).forEach((t) => {
             const choferStr = (t.chofer || "").trim().toLowerCase();
-            const esMismoCam = !t.camionero_id || (cRow?.id && String(t.camionero_id) === String(cRow.id));
-            if (!choferStr.includes("sin") && esMismoCam) {
+            if (!choferStr.includes("sin")) {
               trucksMap.set(t.id, t);
             }
           });
@@ -273,8 +287,8 @@ export function ModalRegistrarRecarga({ isOpen, onClose, onRecargaExitosa }) {
 
   // Camiones filtrados para la cuadrícula del chofer
   const camionesFiltradosGrid = useMemo(() => {
-    const origen =
-      user?.role === "camionero" ? camiones : camionesDelChoferSeleccionado;
+    const esCamionero = user?.role === "camionero" || user?.rol === "camionero";
+    const origen = esCamionero ? camiones : camionesDelChoferSeleccionado;
     if (!busquedaCamionGrid.trim()) return origen;
     const q = busquedaCamionGrid.toLowerCase().trim();
     return origen.filter(
@@ -283,7 +297,7 @@ export function ModalRegistrarRecarga({ isOpen, onClose, onRecargaExitosa }) {
         c.modelo?.toLowerCase().includes(q) ||
         String(c.capacidad).includes(q)
     );
-  }, [user?.role, camiones, camionesDelChoferSeleccionado, busquedaCamionGrid]);
+  }, [user?.role, user?.rol, camiones, camionesDelChoferSeleccionado, busquedaCamionGrid]);
 
   // Manejo de Fotos
   const handleFotoCamionChange = (e) => {
@@ -1297,12 +1311,12 @@ export function ModalRegistrarRecarga({ isOpen, onClose, onRecargaExitosa }) {
                       </div>
                     </div>
                     {/* Botón para volver a elegir si es camionero con >1 camión o admin */}
-                    {((user?.role === "camionero" && camiones.length > 1) ||
-                      user?.role !== "camionero") && (
+                    {(((user?.role === "camionero" || user?.rol === "camionero") && camiones.length > 1) ||
+                      (user?.role !== "camionero" && user?.rol !== "camionero")) && (
                       <BtnChangeUnit
                         type="button"
                         onClick={() => {
-                          if (user?.role === "camionero") {
+                          if (user?.role === "camionero" || user?.rol === "camionero") {
                             setPasoModal("cuadricula_camionero");
                           } else {
                             setPasoModal("cuadricula_admin_chofer");
@@ -1320,7 +1334,7 @@ export function ModalRegistrarRecarga({ isOpen, onClose, onRecargaExitosa }) {
                       type="button"
                       onClick={() =>
                         setPasoModal(
-                          user?.role === "camionero"
+                          user?.role === "camionero" || user?.rol === "camionero"
                             ? "cuadricula_camionero"
                             : "cuadricula_admin_chofer"
                         )
