@@ -203,20 +203,35 @@ export function TablaDetcon({ refresh }) {
       }
 
       if (!modoVerTodo && fechaSeleccionada) {
-        // Crear inicio y fin del día en hora local
+        // Traemos con margen de +/- 1 día en SQL para evitar desajustes por desfase horario servidor/cliente
         const [anio, mes, dia] = fechaSeleccionada.split("-").map(Number);
-        const inicioDia = new Date(anio, mes - 1, dia, 0, 0, 0, 0);
-        const finDia = new Date(anio, mes - 1, dia, 23, 59, 59, 999);
+        const inicioMargen = new Date(anio, mes - 1, dia - 1, 0, 0, 0, 0);
+        const finMargen = new Date(anio, mes - 1, dia + 1, 23, 59, 59, 999);
 
         query = query
-          .gte("fecha_carga", inicioDia.toISOString())
-          .lte("fecha_carga", finDia.toISOString());
+          .gte("fecha_carga", inicioMargen.toISOString())
+          .lte("fecha_carga", finMargen.toISOString());
       }
 
       const { data, error } = await query;
       if (error) throw error;
 
-      setDatos(data || []);
+      let resultados = data || [];
+
+      // Filtrado exacto por día en hora local del navegador (idéntico al agrupador de fechasDisponibles)
+      if (!modoVerTodo && fechaSeleccionada) {
+        resultados = resultados.filter((item) => {
+          if (!item.fecha_carga) return false;
+          const d = new Date(item.fecha_carga);
+          if (isNaN(d.getTime())) return false;
+          const yyyy = d.getFullYear();
+          const mm = String(d.getMonth() + 1).padStart(2, "0");
+          const dd = String(d.getDate()).padStart(2, "0");
+          return `${yyyy}-${mm}-${dd}` === fechaSeleccionada;
+        });
+      }
+
+      setDatos(resultados);
     } catch (err) {
       console.error("Error al consultar ventas por fecha:", err.message);
       setDatos([]);
