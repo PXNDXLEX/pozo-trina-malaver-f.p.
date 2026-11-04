@@ -87,12 +87,12 @@ export function TablaDetcon({ refresh }) {
   // 1. Cargar lista de fechas únicas que tienen registros en la base de datos
   useEffect(() => {
     cargarFechasDisponibles();
-  }, [refresh]);
+  }, [refresh, user?.id, user?.role, user?.rol]);
 
   // 2. Cargar ventas cada vez que cambie la fecha seleccionada o modo
   useEffect(() => {
     consultarVentasPorFecha();
-  }, [fechaSeleccionada, modoVerTodo, refresh]);
+  }, [fechaSeleccionada, modoVerTodo, refresh, user?.id, user?.role, user?.rol]);
 
   const cargarFechasDisponibles = async () => {
     setCargandoFechas(true);
@@ -102,7 +102,10 @@ export function TablaDetcon({ refresh }) {
         .select("fecha_carga")
         .order("fecha_carga", { ascending: false });
 
-      if (user?.role === "camionero") {
+      const esCamionero = user?.role === "camionero" || user?.rol === "camionero";
+      const esRegistrador = user?.role === "registrador" || user?.rol === "registrador";
+
+      if (esCamionero) {
         const ids = await resolverCamionesChofer();
         if (ids && ids.length > 0) {
           query = query.in("camion_id", ids);
@@ -111,7 +114,7 @@ export function TablaDetcon({ refresh }) {
           setCargandoFechas(false);
           return;
         }
-      } else if (user?.role === "registrador" && user?.id) {
+      } else if (esRegistrador && user?.id) {
         query = await filtrarRegistrosPorUsuario(query, user.id);
       }
 
@@ -141,6 +144,11 @@ export function TablaDetcon({ refresh }) {
         }));
 
         setFechasDisponibles(listaFechas);
+
+        // Si la fecha actual no tiene registros pero hay otras fechas disponibles, seleccionar la más reciente
+        if (listaFechas.length > 0 && !conteoPorFecha[fechaSeleccionada]) {
+          setFechaSeleccionada(listaFechas[0].fechaIso);
+        }
       } else {
         setFechasDisponibles([]);
       }
@@ -154,8 +162,11 @@ export function TablaDetcon({ refresh }) {
   const consultarVentasPorFecha = async () => {
     setCargandoDatos(true);
     try {
+      const esCamionero = user?.role === "camionero" || user?.rol === "camionero";
+      const esRegistrador = user?.role === "registrador" || user?.rol === "registrador";
+
       let idsChofer = null;
-      if (user?.role === "camionero") {
+      if (esCamionero) {
         idsChofer = await resolverCamionesChofer();
         if (idsChofer && idsChofer.length === 0) {
           setDatos([]);
@@ -180,15 +191,14 @@ export function TablaDetcon({ refresh }) {
             chofer,
             capacidad,
             modelo,
-            camionero_id,
-            camioneros ( id, cedula, nombre )
+            camionero_id
           )
         `)
         .order("fecha_carga", { ascending: false });
 
       if (idsChofer && idsChofer.length > 0) {
         query = query.in("camion_id", idsChofer);
-      } else if (user?.role === "registrador" && user?.id) {
+      } else if (esRegistrador && user?.id) {
         query = await filtrarRegistrosPorUsuario(query, user.id);
       }
 
@@ -335,17 +345,32 @@ export function TablaDetcon({ refresh }) {
   };
 
   // 📄 Generar Nota de Entrega oficial con la fecha y hora original guardada en registros_carga
-  const handleGenerarNota = (item) => {
+  const handleGenerarNota = async (item) => {
     if (!item) return;
 
     // ⚠️ OJO: Los datos de fecha y hora se toman estrictamente de item.fecha_carga
     // (el momento exacto en que se registró la recarga), NO de la hora actual en que se pide la nota.
     const fechaOriginalRegistro = item.fecha_carga;
 
-    const cedulaChofer =
+    let cedulaChofer =
       item.camiones?.camioneros?.cedula ||
       item.camiones?.cedula ||
       null;
+
+    if (!cedulaChofer && item.camiones?.camionero_id) {
+      try {
+        const { data: cData } = await supabase
+          .from("camioneros")
+          .select("cedula")
+          .eq("id", item.camiones.camionero_id)
+          .maybeSingle();
+        if (cData?.cedula) {
+          cedulaChofer = cData.cedula;
+        }
+      } catch (e) {
+        console.warn("No se pudo obtener cédula del chofer:", e);
+      }
+    }
 
     const datosNota = {
       camion: item.camiones,
@@ -546,7 +571,7 @@ export function TablaDetcon({ refresh }) {
                 <th>Estado</th>
                 <th>Nota / Novedad</th>
                 <th style={{ textAlign: "center" }}>Foto</th>
-                {user?.role === "administrador" && (
+                {(user?.role === "administrador" || user?.rol === "administrador") && (
                   <th style={{ textAlign: "center" }}>
                     <MdReceiptLong className="th-icon" /> Nota de Entrega
                   </th>
@@ -644,7 +669,7 @@ export function TablaDetcon({ refresh }) {
                     </td>
 
                     {/* NOTA DE ENTREGA (SOLO ADMINISTRADOR) */}
-                    {user?.role === "administrador" && (
+                    {(user?.role === "administrador" || user?.rol === "administrador") && (
                       <td style={{ textAlign: "center" }}>
                         <BotonNotaTicket
                           type="button"
@@ -674,7 +699,7 @@ export function TablaDetcon({ refresh }) {
                 <p>Chofer: {fotoModal.chofer} | {fotoModal.hora} | ${fotoModal.monto}</p>
               </div>
               <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
-                {user?.role === "administrador" && fotoModal.item && (
+                {(user?.role === "administrador" || user?.rol === "administrador") && fotoModal.item && (
                   <LightboxNotaBtn
                     type="button"
                     onClick={() => handleGenerarNota(fotoModal.item)}

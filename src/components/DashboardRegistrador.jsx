@@ -56,11 +56,12 @@ export function DashboardRegistrador() {
           url_foto,
           url_comprobante,
           camiones (
+            id,
             placa,
             chofer,
             capacidad,
             modelo,
-            cedula
+            camionero_id
           )
         `)
         .order("fecha_carga", { ascending: false })
@@ -73,7 +74,22 @@ export function DashboardRegistrador() {
 
       const { data, error } = await query;
       if (!error && data && data.length > 0) {
-        setUltimoRegistro(data[0]);
+        const reg = data[0];
+        if (reg.camiones?.camionero_id) {
+          try {
+            const { data: cData } = await supabase
+              .from("camioneros")
+              .select("cedula")
+              .eq("id", reg.camiones.camionero_id)
+              .maybeSingle();
+            if (cData?.cedula) {
+              reg.camiones.cedula = cData.cedula;
+            }
+          } catch (e) {
+            console.warn("No se pudo obtener cédula para último registro:", e);
+          }
+        }
+        setUltimoRegistro(reg);
       } else {
         setUltimoRegistro(null);
       }
