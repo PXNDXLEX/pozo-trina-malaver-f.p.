@@ -215,23 +215,12 @@ export function TablaDetcon({ refresh }) {
         query = await filtrarRegistrosPorUsuario(query, user.id);
       }
 
-      if (!modoVerTodo && fechaSeleccionada) {
-        // Traemos con margen de +/- 1 día en SQL para evitar desajustes por desfase horario servidor/cliente
-        const [anio, mes, dia] = fechaSeleccionada.split("-").map(Number);
-        const inicioMargen = new Date(anio, mes - 1, dia - 1, 0, 0, 0, 0);
-        const finMargen = new Date(anio, mes - 1, dia + 1, 23, 59, 59, 999);
-
-        query = query
-          .gte("fecha_carga", inicioMargen.toISOString())
-          .lte("fecha_carga", finMargen.toISOString());
-      }
-
       const { data, error } = await query;
       if (error) throw error;
 
       let resultados = data || [];
 
-      // Filtrado exacto por día en hora local del navegador (idéntico al agrupador de fechasDisponibles)
+      // Filtrado exacto por día en hora local del navegador (100% idéntico y sincronizado con fechasDisponibles)
       if (!modoVerTodo && fechaSeleccionada) {
         resultados = resultados.filter((item) => {
           if (!item.fecha_carga) return false;
