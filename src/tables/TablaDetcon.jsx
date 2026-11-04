@@ -94,6 +94,19 @@ export function TablaDetcon({ refresh }) {
     consultarVentasPorFecha();
   }, [fechaSeleccionada, modoVerTodo, refresh, user?.id, user?.role, user?.rol]);
 
+  // 3. Sincronización en tiempo real: al registrar una recarga, actualizar tabla y fechas sin recargar página
+  useEffect(() => {
+    const onRecargaRegistrada = () => {
+      cargarFechasDisponibles();
+      consultarVentasPorFecha();
+    };
+
+    window.addEventListener("recarga-registrada", onRecargaRegistrada);
+    return () => {
+      window.removeEventListener("recarga-registrada", onRecargaRegistrada);
+    };
+  }, [fechaSeleccionada, modoVerTodo, user?.id, user?.role, user?.rol]);
+
   const cargarFechasDisponibles = async () => {
     setCargandoFechas(true);
     try {

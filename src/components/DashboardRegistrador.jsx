@@ -39,6 +39,16 @@ export function DashboardRegistrador() {
   useEffect(() => {
     cargarUltimoRegistro();
     cargarMetricasHoy();
+
+    const onRecargaRegistrada = () => {
+      cargarUltimoRegistro();
+      cargarMetricasHoy();
+    };
+
+    window.addEventListener("recarga-registrada", onRecargaRegistrada);
+    return () => {
+      window.removeEventListener("recarga-registrada", onRecargaRegistrada);
+    };
   }, [user?.id]);
 
   const cargarUltimoRegistro = async () => {
@@ -105,7 +115,7 @@ export function DashboardRegistrador() {
     try {
       const hoy = new Date();
       hoy.setHours(0, 0, 0, 0);
-      const inicioDia = hoy.toISOString();
+      const inicioDiaMargen = new Date(hoy.getTime() - 24 * 60 * 60 * 1000).toISOString();
 
       let query = supabase
         .from("registros_carga")
@@ -113,9 +123,10 @@ export function DashboardRegistrador() {
           id,
           monto,
           estatus,
+          fecha_carga,
           camiones ( capacidad )
         `)
-        .gte("fecha_carga", inicioDia);
+        .gte("fecha_carga", inicioDiaMargen);
 
       if (user?.id) {
         query = await filtrarRegistrosPorUsuario(query, user.id);
@@ -123,12 +134,29 @@ export function DashboardRegistrador() {
 
       const { data, error } = await query;
       if (!error && data) {
-        let totalCargas = data.length;
+        // Filtrar con exactitud en hora local del navegador
+        const hoyLocal = new Date();
+        const yyyyHoy = hoyLocal.getFullYear();
+        const mmHoy = String(hoyLocal.getMonth() + 1).padStart(2, "0");
+        const ddHoy = String(hoyLocal.getDate()).padStart(2, "0");
+        const claveHoy = `${yyyyHoy}-${mmHoy}-${ddHoy}`;
+
+        const registrosHoy = data.filter((r) => {
+          if (!r.fecha_carga) return false;
+          const d = new Date(r.fecha_carga);
+          if (isNaN(d.getTime())) return false;
+          const y = d.getFullYear();
+          const m = String(d.getMonth() + 1).padStart(2, "0");
+          const dia = String(d.getDate()).padStart(2, "0");
+          return `${y}-${m}-${dia}` === claveHoy;
+        });
+
+        let totalCargas = registrosHoy.length;
         let totalLitros = 0;
         let montoPagado = 0;
         let montoDeuda = 0;
 
-        data.forEach((r) => {
+        registrosHoy.forEach((r) => {
           const cap = Number(r.camiones?.capacidad) || 0;
           totalLitros += cap;
           const m = Number(r.monto) || 0;

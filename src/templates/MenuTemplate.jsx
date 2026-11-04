@@ -467,6 +467,11 @@ export function MenuTemplate({ children }) {
       <ModalRegistrarRecarga
         isOpen={modalRecargaNav}
         onClose={() => setModalRecargaNav(false)}
+        onRecargaExitosa={() => {
+          if (typeof window !== "undefined") {
+            window.dispatchEvent(new CustomEvent("recarga-registrada"));
+          }
+        }}
       />
     </Container>
   );

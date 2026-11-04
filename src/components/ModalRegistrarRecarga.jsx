@@ -714,6 +714,11 @@ export function ModalRegistrarRecarga({
         onRecargaExitosa();
       }
 
+      // 🔔 Notificar globalmente para que vistas activas (Dashboard, Historial, Nav) actualicen sus métricas en vivo sin recargar
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("recarga-registrada", { detail: datosNota }));
+      }
+
       // 📄 Prompt para generar y compartir Nota de Entrega en formato ticket PDF
       avisarYCompartirNotaEntrega(datosNota);
     } catch (err) {
