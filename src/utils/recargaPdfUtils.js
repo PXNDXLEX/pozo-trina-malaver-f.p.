@@ -870,37 +870,60 @@ export async function generarComprobantePagoPDF(pago) {
 }
 
 /**
+ * Detecta si el cliente se ejecuta en un dispositivo móvil (Android, iOS)
+ */
+export function esDispositivoMovil() {
+  if (typeof navigator === "undefined") return false;
+  const ua = navigator.userAgent || "";
+  const esMobileUa = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(ua);
+  const esTouchScreen =
+    Boolean(navigator.maxTouchPoints && navigator.maxTouchPoints > 1) &&
+    /Macintosh|Mac OS/i.test(ua);
+  return esMobileUa || esTouchScreen;
+}
+
+/**
  * =========================================================================
- * 3. COMPARTIR ARCHIVO PDF (Web Share API nativa o Descarga)
+ * 3. COMPARTIR ARCHIVO PDF (Web Share API nativa en móviles o Descarga directa en PC)
  * =========================================================================
  */
 export async function compartirODescargarPDF({ doc, nombreArchivo, titulo, texto }) {
   try {
-    const pdfBlob = doc.output("blob");
-    const file = new File([pdfBlob], nombreArchivo, { type: "application/pdf" });
+    const esMovil = esDispositivoMovil();
 
-    // Intenta Web Share con archivo (Android, iOS, Windows)
-    if (navigator?.canShare && navigator.canShare({ files: [file] })) {
+    // Solo en dispositivos móviles (Android / iOS) se usa la API nativa de compartir
+    // En PC / Escritorio se descarga directamente para evitar que Windows abra la ventana del sistema
+    if (esMovil && typeof navigator !== "undefined" && navigator.canShare) {
       try {
-        await navigator.share({
-          title: titulo || "Pozo Trina Malaver - Documento",
-          text: texto || "Adjunto documento digital de Pozo Trina Malaver F.P.",
-          files: [file],
-        });
-        return { compartido: true, metodo: "native" };
+        const pdfBlob = doc.output("blob");
+        const file = new File([pdfBlob], nombreArchivo, { type: "application/pdf" });
+
+        if (navigator.canShare({ files: [file] })) {
+          await navigator.share({
+            title: titulo || "Pozo Trina Malaver - Documento",
+            text: texto || "Adjunto documento digital de Pozo Trina Malaver F.P.",
+            files: [file],
+          });
+          return { compartido: true, metodo: "native" };
+        }
       } catch (err) {
         if (err.name === "AbortError") {
           return { compartido: false, cancelado: true };
         }
+        console.warn("Fallo Web Share en móvil, procediendo a descarga directa:", err);
       }
     }
 
-    // Fallback: descarga directa en el navegador
+    // Descarga directa en el navegador (en PC o cuando el móvil no soporta share de archivos)
     doc.save(nombreArchivo);
     return { compartido: true, metodo: "download" };
   } catch (err) {
-    console.error("Fallo compartiendo archivo PDF:", err);
-    doc.save(nombreArchivo);
+    console.error("Fallo compartiendo o descargando archivo PDF:", err);
+    try {
+      doc.save(nombreArchivo);
+    } catch (saveErr) {
+      console.error("Error crítico en doc.save:", saveErr);
+    }
     return { compartido: true, metodo: "download_fallback" };
   }
 }
