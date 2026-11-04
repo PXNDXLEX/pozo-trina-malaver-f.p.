@@ -3,6 +3,7 @@ import styled, { keyframes } from "styled-components";
 import { supabase } from "../supabase/supabase.config";
 import { useAuthStore } from "../store/AuthStore";
 import { ModalRegistrarRecarga } from "./ModalRegistrarRecarga";
+import { filtrarRegistrosPorUsuario } from "../utils/userFilterUtils";
 import {
   MdWaterDrop,
   MdLocalShipping,
@@ -65,41 +66,16 @@ export function DashboardRegistrador() {
         .order("fecha_carga", { ascending: false })
         .limit(1);
 
-      // Si el usuario registrador tiene ID, priorizar su último registro
+      // Si el usuario registrador tiene ID, filtrar sus propios registros
       if (user?.id) {
-        query = query.eq("usuario_id", user.id);
+        query = await filtrarRegistrosPorUsuario(query, user.id);
       }
 
       const { data, error } = await query;
       if (!error && data && data.length > 0) {
         setUltimoRegistro(data[0]);
       } else {
-        // Fallback: mostrar el último registro global si aún no tiene registros en su usuario
-        const { data: globalData } = await supabase
-          .from("registros_carga")
-          .select(`
-            id,
-            monto,
-            metodo,
-            referencia,
-            fecha_carga,
-            estatus,
-            url_foto,
-            url_comprobante,
-            camiones (
-              placa,
-              chofer,
-              capacidad,
-              modelo,
-              cedula
-            )
-          `)
-          .order("fecha_carga", { ascending: false })
-          .limit(1);
-
-        if (globalData && globalData.length > 0) {
-          setUltimoRegistro(globalData[0]);
-        }
+        setUltimoRegistro(null);
       }
     } catch (err) {
       console.warn("No se pudo cargar el último registro:", err);
@@ -126,7 +102,7 @@ export function DashboardRegistrador() {
         .gte("fecha_carga", inicioDia);
 
       if (user?.id) {
-        query = query.eq("usuario_id", user.id);
+        query = await filtrarRegistrosPorUsuario(query, user.id);
       }
 
       const { data, error } = await query;

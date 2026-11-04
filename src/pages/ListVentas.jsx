@@ -18,11 +18,17 @@ export function ListVentas() {
           </IconBadge>
           <div>
             <h2>
-              {user?.role === "camionero" ? "Mis Ventas y Viajes de Agua" : "Control Detallado de Recargas"}
+              {user?.role === "camionero"
+                ? "Mis Ventas y Viajes de Agua"
+                : user?.role === "registrador"
+                ? "Mis Recargas Despachadas"
+                : "Control Detallado de Recargas"}
             </h2>
             <p className="subtitle">
               {user?.role === "camionero"
                 ? "Consulta de viajes realizados por tus unidades cisterna, arqueo diario y reporte de ventas"
+                : user?.role === "registrador"
+                ? "Historial de recargas y viajes despachados en el pozo por tu usuario"
                 : "Consulta de viajes, arqueo diario y reporte de ventas filtrado por fecha con registros disponibles"}
             </p>
           </div>

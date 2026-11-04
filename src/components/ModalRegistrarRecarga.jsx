@@ -663,6 +663,7 @@ export function ModalRegistrarRecarga({
         fecha_carga: fechaActual,
         url_foto: urlFotoCamion,
         estatus: estatusFinal,
+        foto_referencia: user?.id || null,
       };
 
       const payloadExtendido = { ...registroPayload };

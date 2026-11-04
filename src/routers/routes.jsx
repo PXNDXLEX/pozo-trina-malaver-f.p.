@@ -15,14 +15,18 @@ export function MyRoutes(){
         <Route path="/home" element={<Home />} />
       </Route>
 
-      {/* 🔐 REGISTRO DE CAMIONES: Administrador y Registrador */}
-      <Route element={<ProtectedRoute rolesPermitidos={["administrador", "registrador"]} />}>
+      {/* 🔐 REGISTRO DE CAMIONES: Administrador */}
+      <Route element={<ProtectedRoute rolesPermitidos={["administrador"]} />}>
         <Route path="/camion" element={<Regcamion />} />
       </Route>
 
-      {/* 🔐 CUENTAS POR COBRAR / PAGAR Y DETALLE DE VENTAS: Administrador y Camionero */}
+      {/* 🔐 CUENTAS POR COBRAR / PAGAR: Administrador y Camionero */}
       <Route element={<ProtectedRoute rolesPermitidos={["administrador", "camionero"]} />}>
         <Route path="/cuentas-por-cobrar" element={<CuentasPorCobrar />} />
+      </Route>
+
+      {/* 🔐 HISTORIAL Y DETALLE DE VENTAS: Administrador, Registrador y Camionero */}
+      <Route element={<ProtectedRoute rolesPermitidos={["administrador", "registrador", "camionero"]} />}>
         <Route path="/detalle-recarga" element={<ListVentas />} />
       </Route>
       {/* 👑 PANTALLAS EXCLUSIVAS: Solo el Administrador puede ingresar */}

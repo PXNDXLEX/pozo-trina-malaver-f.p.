@@ -157,8 +157,8 @@ export function MenuTemplate({ children }) {
                 <MdWaterDrop /> Nueva Recarga
               </BotonModalRecargaNav>
 
-              <NavLink to="/camion" className={location.pathname === "/camion" ? "active" : ""}>
-                <MdLocalShipping className="nav-icon" /> Camiones
+              <NavLink to="/detalle-recarga" className={location.pathname === "/detalle-recarga" ? "active" : ""}>
+                <MdReceipt className="nav-icon" /> Historial de Recargas
               </NavLink>
             </>
           ) : (
@@ -300,9 +300,9 @@ export function MenuTemplate({ children }) {
               <span style={{ fontWeight: 700 }}>+ Recarga</span>
             </NavButtonMobile>
 
-            <NavItemMobile to="/camion" className={location.pathname === "/camion" ? "active" : ""}>
-              <MdLocalShipping />
-              <span>Camiones</span>
+            <NavItemMobile to="/detalle-recarga" className={location.pathname === "/detalle-recarga" ? "active" : ""}>
+              <MdReceipt />
+              <span>Historial</span>
             </NavItemMobile>
 
             <NavButtonMobile onClick={handleLogout} style={{ color: "#ef4444" }}>

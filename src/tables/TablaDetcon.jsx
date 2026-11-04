@@ -20,6 +20,7 @@ import {
 } from "react-icons/md";
 
 import { useAuthStore } from "../store/AuthStore";
+import { filtrarRegistrosPorUsuario } from "../utils/userFilterUtils";
 
 export function TablaDetcon({ refresh }) {
   const user = useAuthStore((state) => state.user);
@@ -108,6 +109,8 @@ export function TablaDetcon({ refresh }) {
           setCargandoFechas(false);
           return;
         }
+      } else if (user?.role === "registrador" && user?.id) {
+        query = await filtrarRegistrosPorUsuario(query, user.id);
       }
 
       const { data, error } = await query;
@@ -175,6 +178,8 @@ export function TablaDetcon({ refresh }) {
 
       if (idsChofer && idsChofer.length > 0) {
         query = query.in("camion_id", idsChofer);
+      } else if (user?.role === "registrador" && user?.id) {
+        query = await filtrarRegistrosPorUsuario(query, user.id);
       }
 
       if (!modoVerTodo && fechaSeleccionada) {
