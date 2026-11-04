@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { supabase } from "../supabase/supabase.config";
 import styled from "styled-components";
 import { confirmarAccion } from "../utils/alerts";
@@ -47,6 +47,13 @@ export function TablaCamiones() {
   const [nuevoChoferCedula, setNuevoChoferCedula] = useState("");
   const [nuevoChoferTelefono, setNuevoChoferTelefono] = useState("");
   const [guardando, setGuardando] = useState(false);
+  const [mostrarChoferesSinCamion, setMostrarChoferesSinCamion] = useState(true);
+
+  // Modal para Asignar Cisterna a Chofer sin Camión
+  const [modalAsignarAbierto, setModalAsignarAbierto] = useState(false);
+  const [choferParaAsignar, setChoferParaAsignar] = useState(null);
+  const [camionParaAsignarId, setCamionParaAsignarId] = useState("");
+  const [asignandoCamion, setAsignandoCamion] = useState(false);
 
   // Presets rápidos de capacidad
   const PRESETS_CAPACIDAD = [5000, 10000, 12000, 15000, 20000, 30000, 35000];
@@ -411,6 +418,94 @@ export function TablaCamiones() {
   const conChoferCount = datos.filter((c) => tieneChoferAsignado(c)).length;
   const sinChoferCount = totalCamiones - conChoferCount;
 
+  // Choferes registrados que no tienen ninguna cisterna asignada
+  const choferesSinCamion = useMemo(() => {
+    const camioneroIdsEnCamiones = new Set(
+      datos.filter((c) => c.camionero_id).map((c) => String(c.camionero_id))
+    );
+    const perfilesEnCamiones = new Set(
+      datos.filter((c) => c.perfil_id).map((c) => String(c.perfil_id))
+    );
+    const nombresEnCamiones = new Set(
+      datos.filter((c) => c.chofer && !c.chofer.toLowerCase().includes("sin")).map((c) => c.chofer.trim().toLowerCase())
+    );
+
+    return listaCamioneros.filter((ch) => {
+      const tienePorId = camioneroIdsEnCamiones.has(String(ch.id));
+      const tienePorPerfil = ch.perfil_id && perfilesEnCamiones.has(String(ch.perfil_id));
+      const tienePorNombre = ch.nombre && nombresEnCamiones.has(ch.nombre.trim().toLowerCase());
+      return !tienePorId && !tienePorPerfil && !tienePorNombre;
+    });
+  }, [listaCamioneros, datos]);
+
+  // Eliminar chofer sin camión
+  const handleEliminarChoferSinCamion = async (ch) => {
+    const confirmar = await confirmarAccion({
+      titulo: "Eliminar Chofer",
+      mensaje: `¿Estás seguro de que deseas eliminar al chofer <strong>"${ch.nombre}"</strong> (${ch.cedula ? `C.I. ${ch.cedula}` : "Sin cédula"}) del sistema? Este chofer no tiene camiones asignados.`,
+      textoConfirmar: "Sí, eliminar",
+      textoCancelar: "Cancelar",
+      esPeligroso: true,
+    });
+    if (!confirmar) return;
+
+    try {
+      const { error } = await supabase.from("camioneros").delete().eq("id", ch.id);
+      if (error) throw error;
+      alert(`✅ Chofer "${ch.nombre}" eliminado del sistema con éxito.`);
+      consultar();
+    } catch (err) {
+      console.error("Error al eliminar chofer:", err);
+      alert(`Error al eliminar chofer: ${err.message || "Error desconocido"}`);
+    }
+  };
+
+  // Abrir modal para asignar camión a chofer
+  const abrirModalAsignar = (ch) => {
+    setChoferParaAsignar(ch);
+    const libres = datos.filter((c) => !c.camionero_id && (!c.chofer || c.chofer.toLowerCase().includes("sin")));
+    setCamionParaAsignarId(libres.length > 0 ? libres[0].id : (datos[0]?.id || ""));
+    setModalAsignarAbierto(true);
+  };
+
+  const cerrarModalAsignar = () => {
+    setModalAsignarAbierto(false);
+    setChoferParaAsignar(null);
+    setCamionParaAsignarId("");
+    setAsignandoCamion(false);
+  };
+
+  // Guardar asignación de camión a chofer
+  const handleGuardarAsignar = async (e) => {
+    e.preventDefault();
+    if (!choferParaAsignar || !camionParaAsignarId) {
+      alert("Por favor selecciona una unidad cisterna.");
+      return;
+    }
+    setAsignandoCamion(true);
+    try {
+      const { error } = await supabase
+        .from("camiones")
+        .update({
+          camionero_id: choferParaAsignar.id,
+          chofer: choferParaAsignar.nombre,
+          perfil_id: choferParaAsignar.perfil_id || null,
+        })
+        .eq("id", camionParaAsignarId);
+
+      if (error) throw error;
+
+      alert(`🎉 Cisterna asignada exitosamente a ${choferParaAsignar.nombre}.`);
+      cerrarModalAsignar();
+      consultar();
+    } catch (err) {
+      console.error("Error al asignar camión:", err);
+      alert(`Error al asignar camión: ${err.message || "Error desconocido"}`);
+    } finally {
+      setAsignandoCamion(false);
+    }
+  };
+
   // Filtrado de datos
   const datosFiltrados = datos.filter((c) => {
     const choferInfo = getChoferInfo(c);
@@ -501,7 +596,87 @@ export function TablaCamiones() {
             <span className="stat-val">{sinChoferCount}</span>
           </div>
         </StatCard>
+
+        <StatCard
+          style={{ cursor: "pointer", borderColor: choferesSinCamion.length > 0 ? "rgba(245, 158, 11, 0.4)" : "rgba(255, 255, 255, 0.08)" }}
+          onClick={() => setMostrarChoferesSinCamion((prev) => !prev)}
+          title="Click para ver/ocultar choferes sin camión"
+        >
+          <div className="stat-icon-wrapper" style={{ background: "rgba(245, 158, 11, 0.15)", color: "#fbbf24" }}>
+            <MdPerson />
+          </div>
+          <div className="stat-info">
+            <span className="stat-label">Choferes Sin Camión</span>
+            <span className="stat-val" style={choferesSinCamion.length > 0 ? { color: "#fbbf24" } : {}}>
+              {choferesSinCamion.length}
+            </span>
+          </div>
+        </StatCard>
       </StatsRow>
+
+      {/* ⚠️ SECCIÓN: CHOFERES SIN CAMIÓN ASIGNADO */}
+      {choferesSinCamion.length > 0 && mostrarChoferesSinCamion && (
+        <BannerSinCamionBox>
+          <div className="banner-top">
+            <div className="banner-title-group">
+              <span className="alert-chip">
+                <MdWarning /> Choferes sin Cisterna ({choferesSinCamion.length})
+              </span>
+              <p className="banner-desc">
+                Los siguientes choferes están registrados en el pozo pero no tienen ningún camión asignado. Puedes asignarles una unidad libre o eliminarlos.
+              </p>
+            </div>
+            <button
+              type="button"
+              className="btn-cerrar-banner"
+              onClick={() => setMostrarChoferesSinCamion(false)}
+              title="Ocultar sección"
+            >
+              <MdClose />
+            </button>
+          </div>
+
+          <ChoferesSinCamionGrid>
+            {choferesSinCamion.map((ch) => (
+              <ChoferSinCamionCard key={ch.id}>
+                <div className="card-left">
+                  <div className="avatar-circle">
+                    <MdPerson />
+                  </div>
+                  <div className="driver-text">
+                    <h4>{ch.nombre}</h4>
+                    <span className="meta-cedula">
+                      C.I. {ch.cedula ? `V-${ch.cedula}` : "Sin cédula registrada"}
+                    </span>
+                    {ch.telefono && (
+                      <span className="meta-tlf">📞 {ch.telefono}</span>
+                    )}
+                  </div>
+                </div>
+
+                <div className="card-actions">
+                  <button
+                    type="button"
+                    className="btn-asignar"
+                    onClick={() => abrirModalAsignar(ch)}
+                    title="Asignar una unidad cisterna a este chofer"
+                  >
+                    <MdLink /> Asignar Cisterna
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-borrar"
+                    onClick={() => handleEliminarChoferSinCamion(ch)}
+                    title="Eliminar este chofer del pozo"
+                  >
+                    <MdDelete /> Eliminar
+                  </button>
+                </div>
+              </ChoferSinCamionCard>
+            ))}
+          </ChoferesSinCamionGrid>
+        </BannerSinCamionBox>
+      )}
 
       {/* 🔍 BARRA DE BÚSQUEDA Y FILTROS */}
       <SearchFilterBar>
@@ -933,6 +1108,75 @@ export function TablaCamiones() {
                 </button>
                 <button type="submit" className="btn-save" disabled={guardando}>
                   {guardando ? "Guardando Unidad..." : (camionEditando ? "💾 Guardar Cambios" : "🚚 Registrar Camión")}
+                </button>
+              </ModalFooter>
+            </ModalForm>
+          </ModalContainer>
+        </ModalOverlay>
+      )}
+
+      {/* 🔗 MODAL PARA ASIGNAR CISTERNA A CHOFER SIN CAMIÓN */}
+      {modalAsignarAbierto && choferParaAsignar && (
+        <ModalOverlay onClick={cerrarModalAsignar}>
+          <ModalContainer onClick={(e) => e.stopPropagation()} style={{ maxWidth: "520px" }}>
+            <ModalHeader>
+              <div className="title-box">
+                <div className="icon-wrapper" style={{ background: "rgba(0, 195, 255, 0.15)", color: "#38bdf8" }}>
+                  <MdLink />
+                </div>
+                <div>
+                  <h3>Asignar Cisterna a Chofer</h3>
+                  <p>Vincular una unidad a <strong>{choferParaAsignar.nombre}</strong></p>
+                </div>
+              </div>
+              <button className="close-btn" onClick={cerrarModalAsignar} type="button">
+                <MdClose />
+              </button>
+            </ModalHeader>
+
+            <ModalForm onSubmit={handleGuardarAsignar}>
+              <ModalBody>
+                <ModalSectionBox $highlight>
+                  <ModalSectionTitle>
+                    <MdLocalShipping /> Seleccionar Cisterna de la Flota
+                  </ModalSectionTitle>
+                  <FormField>
+                    <label>Unidad Cisterna a Asignar: *</label>
+                    <select
+                      value={camionParaAsignarId}
+                      onChange={(e) => setCamionParaAsignarId(e.target.value)}
+                      required
+                    >
+                      <option value="">-- Selecciona una cisterna --</option>
+                      <optgroup label="⭐ Cisternas Libres (Sin Chofer)">
+                        {datos
+                          .filter((c) => !c.camionero_id && (!c.chofer || c.chofer.toLowerCase().includes("sin")))
+                          .map((c) => (
+                            <option key={c.id} value={c.id}>
+                              🟢 {c.placa} ({Number(c.capacidad).toLocaleString()} Lts) — {c.modelo || "Cisterna"} [LIBRE]
+                            </option>
+                          ))}
+                      </optgroup>
+                      <optgroup label="🔄 Cisternas con Chofer Actual (Se reasignarán)">
+                        {datos
+                          .filter((c) => c.camionero_id || (c.chofer && !c.chofer.toLowerCase().includes("sin")))
+                          .map((c) => (
+                            <option key={c.id} value={c.id}>
+                              ⚠️ {c.placa} ({Number(c.capacidad).toLocaleString()} Lts) — Chofer actual: {c.chofer}
+                            </option>
+                          ))}
+                      </optgroup>
+                    </select>
+                  </FormField>
+                </ModalSectionBox>
+              </ModalBody>
+
+              <ModalFooter>
+                <button type="button" className="btn-cancel" onClick={cerrarModalAsignar} disabled={asignandoCamion}>
+                  Cancelar
+                </button>
+                <button type="submit" className="btn-save" disabled={asignandoCamion || !camionParaAsignarId}>
+                  {asignandoCamion ? "Asignando..." : "🔗 Asignar Cisterna"}
                 </button>
               </ModalFooter>
             </ModalForm>
@@ -1862,3 +2106,172 @@ const ModalFooter = styled.div`
     }
   }
 `;
+
+const BannerSinCamionBox = styled.div`
+  background: rgba(245, 158, 11, 0.05);
+  border: 1px solid rgba(245, 158, 11, 0.25);
+  border-radius: 16px;
+  padding: 16px 20px;
+  margin-bottom: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+
+  .banner-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 12px;
+
+    .banner-title-group {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+
+      .alert-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        background: rgba(245, 158, 11, 0.15);
+        color: #fbbf24;
+        border: 1px solid rgba(245, 158, 11, 0.4);
+        padding: 4px 10px;
+        border-radius: 8px;
+        font-size: 13px;
+        font-weight: 700;
+        width: fit-content;
+      }
+
+      .banner-desc {
+        color: #94a3b8;
+        font-size: 12px;
+        margin: 2px 0 0 0;
+      }
+    }
+
+    .btn-cerrar-banner {
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      color: #94a3b8;
+      width: 28px;
+      height: 28px;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: all 0.2s;
+
+      &:hover {
+        color: #ffffff;
+        background: rgba(255, 255, 255, 0.15);
+      }
+    }
+  }
+`;
+
+const ChoferesSinCamionGrid = styled.div`
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 12px;
+`;
+
+const ChoferSinCamionCard = styled.div`
+  background: rgba(15, 23, 42, 0.7);
+  border: 1px solid rgba(245, 158, 11, 0.2);
+  border-radius: 12px;
+  padding: 12px 14px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+
+  .card-left {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+
+    .avatar-circle {
+      width: 36px;
+      height: 36px;
+      border-radius: 10px;
+      background: rgba(245, 158, 11, 0.15);
+      color: #fbbf24;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 20px;
+      flex-shrink: 0;
+    }
+
+    .driver-text {
+      display: flex;
+      flex-direction: column;
+
+      h4 {
+        margin: 0;
+        font-size: 14px;
+        font-weight: 700;
+        color: #f8fafc;
+      }
+
+      .meta-cedula {
+        font-size: 12px;
+        color: #cbd5e1;
+      }
+
+      .meta-tlf {
+        font-size: 11px;
+        color: #94a3b8;
+      }
+    }
+  }
+
+  .card-actions {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+
+    .btn-asignar {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      background: rgba(0, 195, 255, 0.12);
+      border: 1px solid rgba(0, 195, 255, 0.35);
+      color: #38bdf8;
+      padding: 6px 12px;
+      border-radius: 8px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+
+      &:hover {
+        background: rgba(0, 195, 255, 0.25);
+        color: #ffffff;
+      }
+    }
+
+    .btn-borrar {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      background: rgba(239, 68, 68, 0.12);
+      border: 1px solid rgba(239, 68, 68, 0.35);
+      color: #f87171;
+      padding: 6px 10px;
+      border-radius: 8px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+
+      &:hover {
+        background: rgba(239, 68, 68, 0.25);
+        color: #ffffff;
+      }
+    }
+  }
+`;
+

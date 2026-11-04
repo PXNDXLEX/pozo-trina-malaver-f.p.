@@ -16,8 +16,10 @@ import {
   MdFilterList,
   MdOpenInNew,
   MdImageNotSupported,
-  MdDownload
+  MdDownload,
+  MdReceiptLong,
 } from "react-icons/md";
+import { mostrarModalComprobantePago } from "../utils/recargaPdfUtils";
 
 export function PagosRegistrados() {
   const [pagos, setPagos] = useState([]);
@@ -50,7 +52,7 @@ export function PagosRegistrados() {
           url_comprobante,
           estatus,
           pago_id,
-          camiones ( id, placa, chofer, capacidad, modelo )
+          camiones ( id, placa, chofer, capacidad, modelo, camionero_id, perfil_id )
         `)
         .eq("estatus", "pagado")
         .order("fecha_carga", { ascending: false });
@@ -77,7 +79,7 @@ export function PagosRegistrados() {
             url_foto,
             estatus,
             pago_id,
-            camiones ( id, placa, chofer, capacidad, modelo )
+            camiones ( id, placa, chofer, capacidad, modelo, camionero_id, perfil_id )
           `)
           .eq("estatus", "pagado")
           .order("fecha_carga", { ascending: false });
@@ -94,6 +96,29 @@ export function PagosRegistrados() {
       }
 
       if (error) throw error;
+
+      // Asociar cédula del camionero a cada pago para nombres de archivo y comprobantes
+      if (data && data.length > 0) {
+        const { data: choferes } = await supabase
+          .from("camioneros")
+          .select("id, cedula, perfil_id");
+        const mapCed = new Map();
+        (choferes || []).forEach((ch) => {
+          if (ch.id) mapCed.set(String(ch.id), ch.cedula);
+          if (ch.perfil_id) mapCed.set(String(ch.perfil_id), ch.cedula);
+        });
+
+        data.forEach((p) => {
+          if (p.camiones) {
+            const ced =
+              (p.camiones.camionero_id && mapCed.get(String(p.camiones.camionero_id))) ||
+              (p.camiones.perfil_id && mapCed.get(String(p.camiones.perfil_id))) ||
+              null;
+            p.camiones.cedula = ced;
+          }
+        });
+      }
+
       setPagos(data || []);
     } catch (err) {
       console.error("Error al cargar pagos:", err.message);
@@ -272,6 +297,7 @@ export function PagosRegistrados() {
                   <th>Referencia Bancaria</th>
                   <th style={{ textAlign: "center" }}>Foto Camión</th>
                   <th style={{ textAlign: "center" }}>Factura / Recibo</th>
+                  <th style={{ textAlign: "center" }}>Comprobante de Pago</th>
                 </tr>
               </thead>
               <tbody>
@@ -279,6 +305,7 @@ export function PagosRegistrados() {
                   const { fecha, hora } = formatearFechaHora(pago.fecha_carga);
                   const tieneFotoCamion = Boolean(pago.url_foto);
                   const tieneComprobante = Boolean(pago.url_comprobante);
+                  const cantLote = pago.pago_id ? pagos.filter((p) => p.pago_id === pago.pago_id).length : 1;
 
                   return (
                     <tr key={pago.id}>
@@ -341,6 +368,7 @@ export function PagosRegistrados() {
                                 url: pago.url_foto,
                                 titulo: `Evidencia Camión - ${pago.camiones?.placa || ""}`,
                                 subtitulo: `Chofer: ${pago.camiones?.chofer || ""} | Fecha: ${fecha} ${hora}`,
+                                pago,
                               })
                             }
                             title="Ver foto del camión"
@@ -368,6 +396,7 @@ export function PagosRegistrados() {
                                 url: pago.url_comprobante,
                                 titulo: `Comprobante de Pago - Ref: ${pago.referencia || "S/R"}`,
                                 subtitulo: `Monto: ${formatearDinero(pago.monto)} | ${pago.metodo} | ${fecha}`,
+                                pago,
                               })
                             }
                             title="Ver factura o comprobante"
@@ -382,6 +411,22 @@ export function PagosRegistrados() {
                             <MdImageNotSupported />
                           </NoPhotoBadge>
                         )}
+                      </td>
+
+                      {/* ACCIÓN: GENERAR COMPROBANTE OFICIAL DE PAGO */}
+                      <td style={{ textAlign: "center" }}>
+                        <GenerateReceiptBtn
+                          type="button"
+                          onClick={() => mostrarModalComprobantePago(pago, pagos)}
+                          title={
+                            cantLote > 1
+                              ? `Generar Comprobante Oficial Consolidado de ${cantLote} recargas con fe de cobro y fotos en cuadrícula`
+                              : "Generar Comprobante Oficial de Pago dando fe del cobro registrado (PDF / Compartir)"
+                          }
+                        >
+                          <MdReceiptLong />
+                          <span>{cantLote > 1 ? `Lote (${cantLote})` : "Comprobante"}</span>
+                        </GenerateReceiptBtn>
                       </td>
                     </tr>
                   );
@@ -400,7 +445,16 @@ export function PagosRegistrados() {
                   <h4>{imagenModal.titulo}</h4>
                   {imagenModal.subtitulo && <p>{imagenModal.subtitulo}</p>}
                 </div>
-                <div style={{ display: "flex", gap: "8px" }}>
+                <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+                  {imagenModal.pago && (
+                    <LightboxReceiptBtn
+                      type="button"
+                      onClick={() => mostrarModalComprobantePago(imagenModal.pago, pagos)}
+                      title="Generar Comprobante Oficial de Pago"
+                    >
+                      <MdReceiptLong /> Comprobante PDF
+                    </LightboxReceiptBtn>
+                  )}
                   <ActionIconLink
                     href={imagenModal.url}
                     target="_blank"
@@ -848,6 +902,68 @@ const NoPhotoBadge = styled.div`
   border-radius: 6px;
   color: #475569;
   font-size: 18px;
+`;
+
+const GenerateReceiptBtn = styled.button`
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.16), rgba(5, 150, 105, 0.28));
+  border: 1px solid rgba(16, 185, 129, 0.45);
+  color: #34d399;
+  padding: 6px 12px;
+  border-radius: 8px;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  white-space: nowrap;
+
+  svg {
+    font-size: 16px;
+  }
+
+  &:hover {
+    background: linear-gradient(135deg, rgba(16, 185, 129, 0.35), rgba(5, 150, 105, 0.5));
+    border-color: #10b981;
+    color: #ffffff;
+    box-shadow: 0 0 14px rgba(16, 185, 129, 0.4);
+    transform: translateY(-1px);
+  }
+
+  &:active {
+    transform: translateY(0);
+  }
+`;
+
+const LightboxReceiptBtn = styled.button`
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  color: #ffffff;
+  border: none;
+  padding: 7px 14px;
+  border-radius: 8px;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  box-shadow: 0 2px 10px rgba(16, 185, 129, 0.35);
+
+  svg {
+    font-size: 16px;
+  }
+
+  &:hover {
+    filter: brightness(1.1);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 16px rgba(16, 185, 129, 0.55);
+  }
+
+  &:active {
+    transform: translateY(0);
+  }
 `;
 
 const LoadingState = styled.div`

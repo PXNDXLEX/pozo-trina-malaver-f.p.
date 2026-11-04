@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from "react";
 import styled, { keyframes } from "styled-components";
 import { supabase } from "../supabase/supabase.config";
 import { useAuthStore } from "../store/AuthStore";
+import { avisarYCompartirNotaEntrega } from "../utils/recargaPdfUtils";
 import {
   MdClose,
   MdLocalShipping,
@@ -22,6 +23,8 @@ import {
   MdConfirmationNumber,
   MdDirectionsCar,
   MdWarning,
+  MdLink,
+  MdDelete,
 } from "react-icons/md";
 
 export function ModalRegistrarRecarga({ isOpen, onClose, onRecargaExitosa }) {
@@ -54,6 +57,8 @@ export function ModalRegistrarRecarga({ isOpen, onClose, onRecargaExitosa }) {
   const [nuevoCamionPlaca, setNuevoCamionPlaca] = useState("");
   const [nuevoCamionCapacidad, setNuevoCamionCapacidad] = useState(10000);
   const [nuevoCamionModelo, setNuevoCamionModelo] = useState("");
+  const [mostrarAsignarExistente, setMostrarAsignarExistente] = useState(false);
+  const [camionAAsignarId, setCamionAAsignarId] = useState("");
   const [guardandoInline, setGuardandoInline] = useState(false);
 
   // Formulario de Recarga
@@ -83,6 +88,8 @@ export function ModalRegistrarRecarga({ isOpen, onClose, onRecargaExitosa }) {
     setCargandoDatos(true);
     setMostrarFormNuevoChofer(false);
     setMostrarFormNuevoCamion(false);
+    setMostrarAsignarExistente(false);
+    setCamionAAsignarId("");
     setBusquedaChofer("");
     setBusquedaCamionGrid("");
 
@@ -147,7 +154,11 @@ export function ModalRegistrarRecarga({ isOpen, onClose, onRecargaExitosa }) {
           console.error("Error al cargar camiones de chofer:", errCam);
         }
 
-        const misUnidades = Array.from(trucksMap.values());
+        const cedChofer = cRow?.cedula || user?.cedula || null;
+        const misUnidades = Array.from(trucksMap.values()).map((t) => ({
+          ...t,
+          cedula: t.cedula || cedChofer,
+        }));
         setCamiones(misUnidades);
 
         // REGLA: Si tiene solo 1 camión, seleccionar automáticamente y abrir formulario
@@ -175,8 +186,24 @@ export function ModalRegistrarRecarga({ isOpen, onClose, onRecargaExitosa }) {
         const choferesData = resChoferes.data || [];
         const camionesData = resCamiones.data || [];
 
+        const mapaChoferes = new Map();
+        choferesData.forEach((ch) => {
+          if (ch.id) mapaChoferes.set(String(ch.id), ch);
+          if (ch.perfil_id) mapaChoferes.set(String(ch.perfil_id), ch);
+        });
+
+        const camionesEnriquecidos = camionesData.map((c) => {
+          const ch =
+            (c.camionero_id && mapaChoferes.get(String(c.camionero_id))) ||
+            (c.perfil_id && mapaChoferes.get(String(c.perfil_id)));
+          return {
+            ...c,
+            cedula: ch?.cedula || c.cedula || null,
+          };
+        });
+
         setChoferes(choferesData);
-        setCamiones(camionesData);
+        setCamiones(camionesEnriquecidos);
         setChoferSeleccionado(null);
         setCamionSeleccionadoId("");
 
@@ -197,6 +224,8 @@ export function ModalRegistrarRecarga({ isOpen, onClose, onRecargaExitosa }) {
     setBusquedaCamionGrid("");
     setMostrarFormNuevoChofer(false);
     setMostrarFormNuevoCamion(false);
+    setMostrarAsignarExistente(false);
+    setCamionAAsignarId("");
     setMonto("");
     setNota("");
     setFotoCamion(null);
@@ -455,6 +484,102 @@ export function ModalRegistrarRecarga({ isOpen, onClose, onRecargaExitosa }) {
     }
   };
 
+  // Asignar una cisterna existente al chofer seleccionado
+  const handleAsignarCamionExistente = async (e) => {
+    e.preventDefault();
+    if (!camionAAsignarId) {
+      alert("Por favor selecciona una cisterna de la lista.");
+      return;
+    }
+    if (!choferSeleccionado) return;
+
+    setGuardandoInline(true);
+    try {
+      const { error } = await supabase
+        .from("camiones")
+        .update({
+          chofer: choferSeleccionado.nombre,
+          camionero_id: choferSeleccionado.id,
+          perfil_id: choferSeleccionado.perfil_id || null,
+        })
+        .eq("id", camionAAsignarId);
+
+      if (error) throw error;
+
+      setCamiones((prev) =>
+        prev.map((c) =>
+          String(c.id) === String(camionAAsignarId)
+            ? {
+                ...c,
+                chofer: choferSeleccionado.nombre,
+                camionero_id: choferSeleccionado.id,
+                perfil_id: choferSeleccionado.perfil_id || null,
+              }
+            : c
+        )
+      );
+
+      setCamionSeleccionadoId(camionAAsignarId);
+      setMostrarAsignarExistente(false);
+      setCamionAAsignarId("");
+      setPasoModal("formulario");
+    } catch (err) {
+      console.error("Error al asignar cisterna:", err);
+      alert(`Error al asignar cisterna: ${err.message || "Error desconocido"}`);
+    } finally {
+      setGuardandoInline(false);
+    }
+  };
+
+  // Eliminar chofer (especialmente si no tiene camiones asignados o fue creado por error)
+  const handleEliminarChofer = async () => {
+    if (!choferSeleccionado) return;
+    const cantCamiones = camionesDelChoferSeleccionado.length;
+    const confirmacion = window.confirm(
+      cantCamiones > 0
+        ? `¿Estás seguro de eliminar al chofer "${choferSeleccionado.nombre}"? Tiene ${cantCamiones} camión(es) que quedarán sin chofer asignado.`
+        : `¿Estás seguro de eliminar al chofer "${choferSeleccionado.nombre}" del sistema? Actualmente no tiene camiones asignados.`
+    );
+    if (!confirmacion) return;
+
+    setGuardandoInline(true);
+    try {
+      if (cantCamiones > 0) {
+        await supabase
+          .from("camiones")
+          .update({ camionero_id: null, chofer: "Sin Chofer" })
+          .eq("camionero_id", choferSeleccionado.id);
+
+        setCamiones((prev) =>
+          prev.map((c) =>
+            String(c.camionero_id) === String(choferSeleccionado.id)
+              ? { ...c, camionero_id: null, chofer: "Sin Chofer" }
+              : c
+          )
+        );
+      }
+
+      const { error } = await supabase
+        .from("camioneros")
+        .delete()
+        .eq("id", choferSeleccionado.id);
+
+      if (error) throw error;
+
+      const choferIdEliminado = choferSeleccionado.id;
+      setChoferes((prev) => prev.filter((c) => c.id !== choferIdEliminado));
+      setChoferSeleccionado(null);
+      setMostrarFormNuevoCamion(false);
+      setMostrarAsignarExistente(false);
+      setPasoModal("cuadricula_admin_chofer");
+    } catch (err) {
+      console.error("Error al eliminar chofer:", err);
+      alert(`Error al eliminar chofer: ${err.message || "Error desconocido"}`);
+    } finally {
+      setGuardandoInline(false);
+    }
+  };
+
   // Enviar Formulario de Recarga
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -492,8 +617,8 @@ export function ModalRegistrarRecarga({ isOpen, onClose, onRecargaExitosa }) {
       return;
     }
 
-    if (exigeFotos && tipoRegistro === "pagado" && !fotoComprobante) {
-      alert("⚠️ La foto o captura del comprobante/referencia de pago es obligatoria cuando se registra como pagado.");
+    if (exigeFotos && tipoRegistro === "pagado" && metodoPago !== "Efectivo" && !fotoComprobante) {
+      alert(`⚠️ La foto o captura del comprobante es obligatoria para pagos registrados con ${metodoPago}.`);
       return;
     }
 
@@ -506,7 +631,7 @@ export function ModalRegistrarRecarga({ isOpen, onClose, onRecargaExitosa }) {
       }
 
       let urlComprobante = null;
-      if (tipoRegistro === "pagado" && fotoComprobante) {
+      if (tipoRegistro === "pagado" && metodoPago !== "Efectivo" && fotoComprobante) {
         urlComprobante = await subirArchivoStorage("comprobantes", fotoComprobante, "recibo");
       }
 
@@ -545,11 +670,27 @@ export function ModalRegistrarRecarga({ isOpen, onClose, onRecargaExitosa }) {
 
       if (insertError) throw insertError;
 
-      alert(
-        esPagado
-          ? "🎉 ¡Recarga pagada registrada con éxito!"
-          : "⏳ ¡Recarga registrada exitosamente como Deuda en Cuentas por Cobrar!"
-      );
+      const cedulaChofer =
+        choferSeleccionado?.cedula ||
+        camionActual?.cedula ||
+        user?.cedula ||
+        null;
+
+      const camionParaNota = camionActual
+        ? { ...camionActual, cedula: cedulaChofer || camionActual.cedula }
+        : null;
+
+      const datosNota = {
+        camion: camionParaNota,
+        cedula: cedulaChofer,
+        monto: montoNum,
+        metodo: metodoFinal,
+        referencia: referenciaFinal,
+        fecha: fechaActual,
+        nota: nota.trim(),
+        estatus: estatusFinal,
+        fotoUrl: previewCamion || fotoCamion || urlFotoCamion,
+      };
 
       limpiarTodo();
       onClose();
@@ -557,6 +698,9 @@ export function ModalRegistrarRecarga({ isOpen, onClose, onRecargaExitosa }) {
       if (typeof onRecargaExitosa === "function") {
         onRecargaExitosa();
       }
+
+      // 📄 Prompt para generar y compartir Nota de Entrega en formato ticket PDF
+      avisarYCompartirNotaEntrega(datosNota);
     } catch (err) {
       console.error("Error al registrar recarga:", err);
       alert(`Error al registrar recarga: ${err.message || "Error desconocido"}`);
@@ -833,11 +977,20 @@ export function ModalRegistrarRecarga({ isOpen, onClose, onRecargaExitosa }) {
                   type="button"
                   onClick={() => {
                     setMostrarFormNuevoCamion(false);
+                    setMostrarAsignarExistente(false);
                     setPasoModal("cuadricula_admin_chofer");
                   }}
                 >
                   <MdArrowBack /> Cambiar Chofer
                 </BtnBackPill>
+                <BtnDangerPill
+                  type="button"
+                  onClick={handleEliminarChofer}
+                  disabled={guardandoInline}
+                  title="Eliminar este chofer del sistema"
+                >
+                  <MdDelete /> Eliminar Chofer
+                </BtnDangerPill>
                 <CloseBtn onClick={onClose} title="Cerrar modal">
                   <MdClose />
                 </CloseBtn>
@@ -922,8 +1075,99 @@ export function ModalRegistrarRecarga({ isOpen, onClose, onRecargaExitosa }) {
                     </button>
                   </div>
                 </InlineFormCard>
+              ) : mostrarAsignarExistente ? (
+                <InlineFormCard onSubmit={handleAsignarCamionExistente}>
+                  <div className="form-head">
+                    <h4>
+                      <MdLink /> Asignar Cisterna Existente a "{choferSeleccionado?.nombre}"
+                    </h4>
+                    <button
+                      type="button"
+                      className="btn-cancel-inline"
+                      onClick={() => setMostrarAsignarExistente(false)}
+                    >
+                      Cancelar
+                    </button>
+                  </div>
+                  <div className="form-inputs-grid" style={{ gridTemplateColumns: "1fr" }}>
+                    <div>
+                      <label>Selecciona la Cisterna a Asignar: *</label>
+                      <Select
+                        value={camionAAsignarId}
+                        onChange={(e) => setCamionAAsignarId(e.target.value)}
+                        required
+                        autoFocus
+                      >
+                        <option value="">-- Elige una cisterna del pozo --</option>
+                        {camiones.map((t) => {
+                          const choferActual = (t.chofer || "").trim();
+                          const esLibre =
+                            !t.camionero_id ||
+                            choferActual.toLowerCase().includes("sin") ||
+                            !choferActual;
+                          return (
+                            <option key={t.id} value={t.id}>
+                              Placa: {t.placa} ({Number(t.capacidad).toLocaleString()} Lts) - {t.modelo || "Cisterna"} [{esLibre ? "🟢 DISPONIBLE / SIN CHOFER" : `Chofer actual: ${choferActual}`}]
+                            </option>
+                          );
+                        })}
+                      </Select>
+                    </div>
+                  </div>
+                  <div className="form-actions">
+                    <button
+                      type="button"
+                      className="btn-sec"
+                      onClick={() => setMostrarAsignarExistente(false)}
+                      disabled={guardandoInline}
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      type="submit"
+                      className="btn-pri cyan"
+                      disabled={guardandoInline || !camionAAsignarId}
+                    >
+                      {guardandoInline ? "Asignando..." : "🔗 Asignar Cisterna y Continuar"}
+                    </button>
+                  </div>
+                </InlineFormCard>
               ) : (
                 <>
+                  {camionesDelChoferSeleccionado.length === 0 && (
+                    <SinCamionesBanner>
+                      <div className="banner-left">
+                        <MdWarning className="warn-ico" />
+                        <div>
+                          <h4>Este chofer no tiene camiones asignados actualmente</h4>
+                          <p>
+                            Puedes asignarle una cisterna existente en el pozo, registrarle una unidad nueva o eliminar este chofer.
+                          </p>
+                        </div>
+                      </div>
+                      <div className="banner-btns">
+                        <button
+                          type="button"
+                          className="btn-assign"
+                          onClick={() => {
+                            setMostrarAsignarExistente(true);
+                            setMostrarFormNuevoCamion(false);
+                          }}
+                        >
+                          <MdLink /> Asignar Cisterna
+                        </button>
+                        <button
+                          type="button"
+                          className="btn-delete"
+                          onClick={handleEliminarChofer}
+                          disabled={guardandoInline}
+                        >
+                          <MdDelete /> Eliminar
+                        </button>
+                      </div>
+                    </SinCamionesBanner>
+                  )}
+
                   {camionesDelChoferSeleccionado.length > 4 && (
                     <SearchGridInputBox>
                       <MdSearch className="search-ico" />
@@ -941,14 +1185,35 @@ export function ModalRegistrarRecarga({ isOpen, onClose, onRecargaExitosa }) {
                     <SpecialCardCreate
                       type="button"
                       $theme="purple"
-                      onClick={() => setMostrarFormNuevoCamion(true)}
+                      onClick={() => {
+                        setMostrarFormNuevoCamion(true);
+                        setMostrarAsignarExistente(false);
+                      }}
                     >
                       <div className="ico-box">
                         <MdAddCircleOutline />
                       </div>
                       <div className="create-text-wrapper">
                         <h4>+ Registrar Nueva Cisterna</h4>
-                        <p>Agregar unidad para {choferSeleccionado?.nombre}</p>
+                        <p>Crear nueva unidad para {choferSeleccionado?.nombre}</p>
+                      </div>
+                    </SpecialCardCreate>
+
+                    {/* Tarjeta Especial: Asignar Cisterna Existente */}
+                    <SpecialCardCreate
+                      type="button"
+                      $theme="cyan"
+                      onClick={() => {
+                        setMostrarAsignarExistente(true);
+                        setMostrarFormNuevoCamion(false);
+                      }}
+                    >
+                      <div className="ico-box">
+                        <MdLink />
+                      </div>
+                      <div className="create-text-wrapper">
+                        <h4>🔗 Asignar Cisterna Existente</h4>
+                        <p>Vincular un camión del pozo a este chofer</p>
                       </div>
                     </SpecialCardCreate>
 
@@ -1166,7 +1431,15 @@ export function ModalRegistrarRecarga({ isOpen, onClose, onRecargaExitosa }) {
                       </Label>
                       <Select
                         value={metodoPago}
-                        onChange={(e) => setMetodoPago(e.target.value)}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setMetodoPago(val);
+                          if (val === "Efectivo") {
+                            setReferencia("");
+                            setFotoComprobante(null);
+                            setPreviewComprobante(null);
+                          }
+                        }}
                       >
                         <option value="Transferencia">Transferencia Bancaria</option>
                         <option value="Pago Móvil">Pago Móvil</option>
@@ -1197,45 +1470,47 @@ export function ModalRegistrarRecarga({ isOpen, onClose, onRecargaExitosa }) {
                       </FormGroup>
                     )}
 
-                    <FormGroup>
-                      <Label>
-                        <MdReceipt className="icon" /> Foto de la Factura / Comprobante de Pago:{" "}
-                        {user?.role === "registrador" || user?.role === "camionero" ? (
-                          <span className="req">* (Obligatoria)</span>
-                        ) : (
-                          <span className="optional">(Opcional)</span>
-                        )}
-                      </Label>
-                      <FileInputBox>
-                        <input
-                          type="file"
-                          id="foto-comprobante-input"
-                          accept="image/*"
-                          onChange={handleFotoComprobanteChange}
-                        />
-                        <FileInputLabel htmlFor="foto-comprobante-input" className="comprobante">
-                          <MdReceipt />{" "}
-                          {fotoComprobante
-                            ? "Cambiar foto comprobante"
-                            : "Adjuntar foto de comprobante/factura"}
-                        </FileInputLabel>
-                        {previewComprobante && (
-                          <PreviewWrapper>
-                            <PreviewImage src={previewComprobante} alt="Vista previa comprobante" />
-                            <RemovePreviewBtn
-                              type="button"
-                              onClick={() => {
-                                setFotoComprobante(null);
-                                setPreviewComprobante(null);
-                              }}
-                              title="Quitar foto comprobante"
-                            >
-                              <MdDeleteOutline />
-                            </RemovePreviewBtn>
-                          </PreviewWrapper>
-                        )}
-                      </FileInputBox>
-                    </FormGroup>
+                    {metodoPago !== "Efectivo" && (
+                      <FormGroup>
+                        <Label>
+                          <MdReceipt className="icon" /> Foto de la Factura / Comprobante de Pago:{" "}
+                          {user?.role === "registrador" || user?.role === "camionero" ? (
+                            <span className="req">* (Obligatoria)</span>
+                          ) : (
+                            <span className="optional">(Opcional)</span>
+                          )}
+                        </Label>
+                        <FileInputBox>
+                          <input
+                            type="file"
+                            id="foto-comprobante-input"
+                            accept="image/*"
+                            onChange={handleFotoComprobanteChange}
+                          />
+                          <FileInputLabel htmlFor="foto-comprobante-input" className="comprobante">
+                            <MdReceipt />{" "}
+                            {fotoComprobante
+                              ? "Cambiar foto comprobante"
+                              : "Adjuntar foto de comprobante/factura"}
+                          </FileInputLabel>
+                          {previewComprobante && (
+                            <PreviewWrapper>
+                              <PreviewImage src={previewComprobante} alt="Vista previa comprobante" />
+                              <RemovePreviewBtn
+                                type="button"
+                                onClick={() => {
+                                  setFotoComprobante(null);
+                                  setPreviewComprobante(null);
+                                }}
+                                title="Quitar foto comprobante"
+                              >
+                                <MdDeleteOutline />
+                              </RemovePreviewBtn>
+                            </PreviewWrapper>
+                          )}
+                        </FileInputBox>
+                      </FormGroup>
+                    )}
                   </PaidFieldsContainer>
                 )}
 
@@ -1488,6 +1763,132 @@ const BtnBackPill = styled.button`
     padding: 6px 10px;
     font-size: 11px;
     border-radius: 8px;
+  }
+`;
+
+const BtnDangerPill = styled.button`
+  background: rgba(239, 68, 68, 0.12);
+  border: 1px solid rgba(239, 68, 68, 0.35);
+  color: #f87171;
+  padding: 8px 14px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  transition: all 0.2s;
+
+  &:hover:not(:disabled) {
+    background: rgba(239, 68, 68, 0.25);
+    color: #ffffff;
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  @media (max-width: 600px) {
+    padding: 6px 10px;
+    font-size: 11px;
+    border-radius: 8px;
+  }
+`;
+
+const SinCamionesBanner = styled.div`
+  background: rgba(245, 158, 11, 0.1);
+  border: 1px solid rgba(245, 158, 11, 0.35);
+  border-radius: 14px;
+  padding: 14px 18px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+
+  .banner-left {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-width: 0;
+    flex: 1;
+
+    .warn-ico {
+      font-size: 26px;
+      color: #f59e0b;
+      flex-shrink: 0;
+    }
+
+    h4 {
+      margin: 0 0 3px 0;
+      font-size: 14px;
+      font-weight: 700;
+      color: #fef3c7;
+    }
+
+    p {
+      margin: 0;
+      font-size: 12px;
+      color: #fde68a;
+      line-height: 1.35;
+    }
+  }
+
+  .banner-btns {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    flex-shrink: 0;
+
+    button {
+      padding: 7px 12px;
+      border-radius: 8px;
+      font-size: 12px;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      cursor: pointer;
+      border: none;
+      transition: all 0.2s;
+    }
+
+    .btn-assign {
+      background: rgba(6, 182, 212, 0.25);
+      border: 1px solid rgba(6, 182, 212, 0.5);
+      color: #67e8f9;
+
+      &:hover {
+        background: rgba(6, 182, 212, 0.45);
+        color: #ffffff;
+      }
+    }
+
+    .btn-delete {
+      background: rgba(239, 68, 68, 0.2);
+      border: 1px solid rgba(239, 68, 68, 0.4);
+      color: #fca5a5;
+
+      &:hover {
+        background: rgba(239, 68, 68, 0.4);
+        color: #ffffff;
+      }
+    }
+  }
+
+  @media (max-width: 600px) {
+    padding: 12px;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+
+    .banner-btns {
+      width: 100%;
+      justify-content: flex-end;
+    }
   }
 `;
 
@@ -1891,11 +2292,15 @@ const SpecialCardCreate = styled.button`
   background: ${(props) =>
     props.$theme === "emerald"
       ? "linear-gradient(135deg, rgba(6, 78, 59, 0.4) 0%, rgba(6, 95, 70, 0.25) 100%)"
+      : props.$theme === "cyan"
+      ? "linear-gradient(135deg, rgba(8, 145, 178, 0.4) 0%, rgba(14, 116, 144, 0.25) 100%)"
       : "linear-gradient(135deg, rgba(76, 29, 149, 0.4) 0%, rgba(91, 33, 182, 0.25) 100%)"};
   border: 1px dashed
     ${(props) =>
       props.$theme === "emerald"
         ? "rgba(16, 185, 129, 0.6)"
+        : props.$theme === "cyan"
+        ? "rgba(6, 182, 212, 0.6)"
         : "rgba(139, 92, 246, 0.6)"};
   border-radius: 16px;
   padding: 18px 16px;
@@ -1913,15 +2318,23 @@ const SpecialCardCreate = styled.button`
     background: ${(props) =>
       props.$theme === "emerald"
         ? "rgba(6, 95, 70, 0.6)"
+        : props.$theme === "cyan"
+        ? "rgba(14, 116, 144, 0.6)"
         : "rgba(91, 33, 182, 0.6)"};
     border-style: solid;
     border-color: ${(props) =>
-      props.$theme === "emerald" ? "#10b981" : "#a855f7"};
+      props.$theme === "emerald"
+        ? "#10b981"
+        : props.$theme === "cyan"
+        ? "#06b6d4"
+        : "#a855f7"};
     box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5),
       0 0 20px
         ${(props) =>
           props.$theme === "emerald"
             ? "rgba(16, 185, 129, 0.35)"
+            : props.$theme === "cyan"
+            ? "rgba(6, 182, 212, 0.35)"
             : "rgba(168, 85, 247, 0.35)"};
   }
 
@@ -1936,9 +2349,15 @@ const SpecialCardCreate = styled.button`
     background: ${(props) =>
       props.$theme === "emerald"
         ? "rgba(16, 185, 129, 0.2)"
+        : props.$theme === "cyan"
+        ? "rgba(6, 182, 212, 0.2)"
         : "rgba(168, 85, 247, 0.2)"};
     color: ${(props) =>
-      props.$theme === "emerald" ? "#34d399" : "#c084fc"};
+      props.$theme === "emerald"
+        ? "#34d399"
+        : props.$theme === "cyan"
+        ? "#67e8f9"
+        : "#c084fc"};
     display: flex;
     align-items: center;
     justify-content: center;
@@ -1959,7 +2378,11 @@ const SpecialCardCreate = styled.button`
     font-size: 14px;
     font-weight: 700;
     color: ${(props) =>
-      props.$theme === "emerald" ? "#6ee7b7" : "#e9d5ff"};
+      props.$theme === "emerald"
+        ? "#6ee7b7"
+        : props.$theme === "cyan"
+        ? "#a5f3fc"
+        : "#e9d5ff"};
   }
 
   p {
@@ -2120,6 +2543,15 @@ const InlineFormCard = styled.form`
 
         &:hover {
           box-shadow: 0 6px 20px rgba(139, 92, 246, 0.5);
+        }
+      }
+
+      &.cyan {
+        background: linear-gradient(135deg, #06b6d4 0%, #0891b2 100%);
+        box-shadow: 0 4px 15px rgba(6, 182, 212, 0.35);
+
+        &:hover {
+          box-shadow: 0 6px 20px rgba(6, 182, 212, 0.5);
         }
       }
     }

@@ -64,6 +64,7 @@
 /* Contenedor de Botones (Acciones) */
 .swal2-actions {
   display: flex !important;
+  flex-wrap: wrap !important;
   justify-content: center !important;
   align-items: center !important;
   gap: 14px !important;

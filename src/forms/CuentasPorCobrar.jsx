@@ -16,6 +16,7 @@ import {
   MdOpenInNew,
 } from "react-icons/md";
 import { MenuTemplate } from "../templates/MenuTemplate";
+import { mostrarModalComprobantePago } from "../utils/recargaPdfUtils";
 import styled from "styled-components";
 
 export function CuentasPorCobrar() {
@@ -56,7 +57,7 @@ export function CuentasPorCobrar() {
           metodo,
           referencia,
           camion_id,
-          camiones ( id, placa, chofer, perfil_id, capacidad, modelo )
+          camiones ( id, placa, chofer, perfil_id, capacidad, modelo, camionero_id )
         `)
         .in("estatus", ["pendiente", "por_conciliar"])
         .order("fecha_carga", { ascending: false });
@@ -131,6 +132,25 @@ export function CuentasPorCobrar() {
       const { data, error } = await queryBuilder;
       if (error) throw error;
 
+      // Asociar cédula de chofer a cada camión
+      if (data && data.length > 0) {
+        const { data: choferesList } = await supabase.from("camioneros").select("id, cedula, perfil_id");
+        const mapCed = new Map();
+        (choferesList || []).forEach((ch) => {
+          if (ch.id) mapCed.set(String(ch.id), ch.cedula);
+          if (ch.perfil_id) mapCed.set(String(ch.perfil_id), ch.cedula);
+        });
+
+        data.forEach((d) => {
+          if (d.camiones) {
+            d.camiones.cedula =
+              (d.camiones.camionero_id && mapCed.get(String(d.camiones.camionero_id))) ||
+              (d.camiones.perfil_id && mapCed.get(String(d.camiones.perfil_id))) ||
+              null;
+          }
+        });
+      }
+
       setDeudas(data || []);
       // Expandir el primer camión por defecto si existe
       if (data && data.length > 0) {
@@ -160,6 +180,7 @@ export function CuentasPorCobrar() {
           camionId,
           placa,
           chofer,
+          cedula: item.camiones?.cedula || null,
           capacidad: item.camiones?.capacidad || 0,
           modelo: item.camiones?.modelo || "",
           viajes: [],
@@ -280,9 +301,9 @@ export function CuentasPorCobrar() {
       }
     }
 
-    // 📸 Validación obligatoria de comprobante para choferes camioneros
-    if (user?.role === "camionero" && !fotoComprobante) {
-      alert("⚠️ La foto o captura del comprobante/referencia de pago es obligatoria para registrar el pago.");
+    // 📸 Validación obligatoria de comprobante para choferes camioneros (solo transferencias y pagos digitales)
+    if (user?.role === "camionero" && metodoPago !== "Efectivo" && !fotoComprobante) {
+      alert(`⚠️ La foto o captura del comprobante/referencia de pago es obligatoria para registrar pagos por ${metodoPago}.`);
       return;
     }
 
@@ -338,7 +359,40 @@ export function CuentasPorCobrar() {
 
       if (updateError) throw updateError;
 
-      alert("🎉 ¡Pago registrado con éxito! La deuda del camión ha sido conciliada.");
+      // Desglose de los viajes liquidados en este pago
+      const camionSeleccionado = modalPagoCamion.camion;
+      const recargasPagadas = camionSeleccionado.viajes.filter((v) =>
+        modalPagoCamion.seleccionados.includes(v.id)
+      );
+      const totalPagado = recargasPagadas.reduce((sum, v) => sum + (Number(v.monto) || 0), 0);
+
+      const datosComprobante = {
+        id: uuidPago,
+        pago_id: uuidPago,
+        monto: totalPagado,
+        metodo: metodoPago,
+        referencia: refFinal,
+        url_comprobante: urlComprobante,
+        fecha_carga: new Date().toISOString(),
+        camiones: {
+          id: camionSeleccionado.camionId,
+          placa: camionSeleccionado.placa,
+          chofer: camionSeleccionado.chofer,
+          capacidad: camionSeleccionado.capacidad,
+          modelo: camionSeleccionado.modelo,
+          cedula: camionSeleccionado.cedula,
+        },
+        recargas: recargasPagadas.map((r) => ({
+          ...r,
+          camiones: {
+            placa: camionSeleccionado.placa,
+            chofer: camionSeleccionado.chofer,
+            capacidad: camionSeleccionado.capacidad,
+            cedula: camionSeleccionado.cedula,
+          },
+        })),
+      };
+
       setModalPagoCamion(null);
       setReferencia("");
       setFotoComprobante(null);
@@ -346,6 +400,9 @@ export function CuentasPorCobrar() {
 
       // Recargar lista actualizada
       cargarDeudasPendientes();
+
+      // Generar o compartir comprobante oficial del pago de las recargas liquidadas
+      mostrarModalComprobantePago(datosComprobante);
     } catch (err) {
       console.error("Error al registrar pago de deuda:", err);
       alert(`Error al procesar el pago: ${err.message || "Error desconocido"}`);
@@ -693,8 +750,13 @@ export function CuentasPorCobrar() {
                     <select
                       value={metodoPago}
                       onChange={(e) => {
-                        setMetodoPago(e.target.value);
-                        if (e.target.value === "Efectivo") setReferencia("");
+                        const val = e.target.value;
+                        setMetodoPago(val);
+                        if (val === "Efectivo") {
+                          setReferencia("");
+                          setFotoComprobante(null);
+                          setPreviewComprobante(null);
+                        }
                       }}
                     >
                       <option value="Transferencia">Transferencia Bancaria</option>
@@ -738,50 +800,52 @@ export function CuentasPorCobrar() {
                     </FormField>
                   )}
 
-                  {/* FOTO COMPROBANTE DE PAGO */}
-                  <FormField>
-                    <label>
-                      <MdPhotoCamera /> Foto del Comprobante / Recibo:{" "}
-                      {user?.role === "camionero" ? (
-                        <span className="req" style={{ color: "#ef4444", fontWeight: 700 }}>
-                          * (Obligatoria)
-                        </span>
-                      ) : (
-                        <span className="opt">(Opcional)</span>
-                      )}
-                    </label>
-                    <FileInputWrap>
-                      <input
-                        type="file"
-                        id="modal-comprobante-input"
-                        accept="image/*"
-                        onChange={(e) => {
-                          const file = e.target.files[0];
-                          if (file) {
-                            setFotoComprobante(file);
-                            setPreviewComprobante(URL.createObjectURL(file));
-                          }
-                        }}
-                      />
-                      <FileLabel htmlFor="modal-comprobante-input">
-                        <MdPhotoCamera /> {fotoComprobante ? "Cambiar foto adjunta" : "Subir foto del comprobante"}
-                      </FileLabel>
-                      {previewComprobante && (
-                        <PreviewMini>
-                          <img src={previewComprobante} alt="Preview" />
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setFotoComprobante(null);
-                              setPreviewComprobante(null);
-                            }}
-                          >
-                            <MdDeleteOutline />
-                          </button>
-                        </PreviewMini>
-                      )}
-                    </FileInputWrap>
-                  </FormField>
+                  {/* FOTO COMPROBANTE DE PAGO (SOLO TRANSFERENCIA / NO EFECTIVO) */}
+                  {metodoPago !== "Efectivo" && (
+                    <FormField>
+                      <label>
+                        <MdPhotoCamera /> Foto del Comprobante / Recibo:{" "}
+                        {user?.role === "camionero" ? (
+                          <span className="req" style={{ color: "#ef4444", fontWeight: 700 }}>
+                            * (Obligatoria)
+                          </span>
+                        ) : (
+                          <span className="opt">(Opcional)</span>
+                        )}
+                      </label>
+                      <FileInputWrap>
+                        <input
+                          type="file"
+                          id="modal-comprobante-input"
+                          accept="image/*"
+                          onChange={(e) => {
+                            const file = e.target.files[0];
+                            if (file) {
+                              setFotoComprobante(file);
+                              setPreviewComprobante(URL.createObjectURL(file));
+                            }
+                          }}
+                        />
+                        <FileLabel htmlFor="modal-comprobante-input">
+                          <MdPhotoCamera /> {fotoComprobante ? "Cambiar foto adjunta" : "Subir foto del comprobante"}
+                        </FileLabel>
+                        {previewComprobante && (
+                          <PreviewMini>
+                            <img src={previewComprobante} alt="Preview" />
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setFotoComprobante(null);
+                                setPreviewComprobante(null);
+                              }}
+                            >
+                              <MdDeleteOutline />
+                            </button>
+                          </PreviewMini>
+                        )}
+                      </FileInputWrap>
+                    </FormField>
+                  )}
                 </ModalScrollContent>
 
                 <ModalFooter>
