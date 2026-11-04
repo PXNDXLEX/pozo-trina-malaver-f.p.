@@ -1,107 +1,47 @@
-import React, { useState, useEffect, useMemo, useRef } from "react";
-import styled from "styled-components";
+import React, { useState, useEffect } from "react";
+import styled, { keyframes } from "styled-components";
 import { supabase } from "../supabase/supabase.config";
 import { useAuthStore } from "../store/AuthStore";
-import { avisarYCompartirNotaEntrega } from "../utils/recargaPdfUtils";
+import { ModalRegistrarRecarga } from "./ModalRegistrarRecarga";
 import {
   MdWaterDrop,
   MdLocalShipping,
   MdAttachMoney,
-  MdPhotoCamera,
-  MdPayments,
-  MdReceipt,
-  MdCheckCircle,
   MdHourglassEmpty,
-  MdDeleteOutline,
-  MdEditNote,
-  MdSearch,
+  MdCheckCircle,
   MdOutlineAccessTime,
   MdPerson,
-  MdDoneAll,
+  MdSpeed,
+  MdArrowForward,
+  MdInfoOutline,
+  MdAddCircleOutline,
+  MdReceipt,
+  MdImage,
 } from "react-icons/md";
 
 export function DashboardRegistrador() {
   const user = useAuthStore((state) => state.user);
 
-  // Lista de camiones
-  const [camiones, setCamiones] = useState([]);
-  const [cargandoCamiones, setCargandoCamiones] = useState(false);
-  const [camionSeleccionadoId, setCamionSeleccionadoId] = useState("");
-  const [busquedaCamion, setBusquedaCamion] = useState("");
-  const [mostrarMenuCamiones, setMostrarMenuCamiones] = useState(false);
-  const comboboxRef = useRef(null);
-
-  // Campos del formulario
-  const [monto, setMonto] = useState("");
-  const [nota, setNota] = useState("");
-
-  // Fotos
-  const [fotoCamion, setFotoCamion] = useState(null);
-  const [previewCamion, setPreviewCamion] = useState(null);
-  const [fotoComprobante, setFotoComprobante] = useState(null);
-  const [previewComprobante, setPreviewComprobante] = useState(null);
-
-  // Tipo: pagado vs deuda
-  const [tipoRegistro, setTipoRegistro] = useState("pagado"); // "pagado" | "deuda"
-  const [metodoPago, setMetodoPago] = useState("Transferencia");
-  const [referencia, setReferencia] = useState("");
-
-  const [guardando, setGuardando] = useState(false);
+  const [modalRecargaAbierto, setModalRecargaAbierto] = useState(false);
   const [ultimoRegistro, setUltimoRegistro] = useState(null);
-  const [mensajeExito, setMensajeExito] = useState("");
+  const [cargandoUltimo, setCargandoUltimo] = useState(true);
+
+  // Métricas del turno / día de hoy
+  const [metricasHoy, setMetricasHoy] = useState({
+    totalCargas: 0,
+    totalLitros: 0,
+    montoPagado: 0,
+    montoDeuda: 0,
+  });
+  const [cargandoMetricas, setCargandoMetricas] = useState(true);
 
   useEffect(() => {
-    cargarCamiones();
     cargarUltimoRegistro();
-  }, []);
-
-  // Cierre del dropdown de búsqueda al hacer clic fuera
-  useEffect(() => {
-    function handleClickOutside(e) {
-      if (comboboxRef.current && !comboboxRef.current.contains(e.target)) {
-        setMostrarMenuCamiones(false);
-      }
-    }
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
-
-  const cargarCamiones = async () => {
-    setCargandoCamiones(true);
-    try {
-      const [resCam, resChof] = await Promise.all([
-        supabase
-          .from("camiones")
-          .select("id, placa, chofer, capacidad, modelo, camionero_id, perfil_id")
-          .order("chofer", { ascending: true }),
-        supabase
-          .from("camioneros")
-          .select("id, cedula, perfil_id"),
-      ]);
-
-      const mapCed = new Map();
-      (resChof.data || []).forEach((ch) => {
-        if (ch.id) mapCed.set(String(ch.id), ch.cedula);
-        if (ch.perfil_id) mapCed.set(String(ch.perfil_id), ch.cedula);
-      });
-
-      const camionesFinales = (resCam.data || []).map((c) => ({
-        ...c,
-        cedula:
-          (c.camionero_id && mapCed.get(String(c.camionero_id))) ||
-          (c.perfil_id && mapCed.get(String(c.perfil_id))) ||
-          null,
-      }));
-
-      setCamiones(camionesFinales);
-    } catch (err) {
-      console.error("Error al cargar camiones:", err.message);
-    } finally {
-      setCargandoCamiones(false);
-    }
-  };
+    cargarMetricasHoy();
+  }, [user?.id]);
 
   const cargarUltimoRegistro = async () => {
+    setCargandoUltimo(true);
     try {
       let query = supabase
         .from("registros_carga")
@@ -112,11 +52,20 @@ export function DashboardRegistrador() {
           referencia,
           fecha_carga,
           estatus,
-          camiones ( placa, chofer, capacidad )
+          url_foto,
+          url_comprobante,
+          camiones (
+            placa,
+            chofer,
+            capacidad,
+            modelo,
+            cedula
+          )
         `)
         .order("fecha_carga", { ascending: false })
         .limit(1);
 
+      // Si el usuario registrador tiene ID, priorizar su último registro
       if (user?.id) {
         query = query.eq("usuario_id", user.id);
       }
@@ -124,156 +73,10 @@ export function DashboardRegistrador() {
       const { data, error } = await query;
       if (!error && data && data.length > 0) {
         setUltimoRegistro(data[0]);
-      }
-    } catch (err) {
-      console.warn("No se pudo cargar el último registro:", err);
-    }
-  };
-
-  const limpiarCampos = () => {
-    setCamionSeleccionadoId("");
-    setBusquedaCamion("");
-    setMostrarMenuCamiones(false);
-    setMonto("");
-    setNota("");
-    setFotoCamion(null);
-    setPreviewCamion(null);
-    setFotoComprobante(null);
-    setPreviewComprobante(null);
-    setTipoRegistro("pagado");
-    setMetodoPago("Transferencia");
-    setReferencia("");
-  };
-
-  const handleFotoCamionChange = (e) => {
-    const file = e.target.files[0];
-    if (file) {
-      setFotoCamion(file);
-      setPreviewCamion(URL.createObjectURL(file));
-    }
-  };
-
-  const handleFotoComprobanteChange = (e) => {
-    const file = e.target.files[0];
-    if (file) {
-      setFotoComprobante(file);
-      setPreviewComprobante(URL.createObjectURL(file));
-    }
-  };
-
-  const subirFoto = async (file, carpeta) => {
-    if (!file) return null;
-    const fileExt = file.name.split(".").pop();
-    const fileName = `${carpeta}_${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`;
-    const filePath = `${carpeta}/${fileName}`;
-
-    const { error: uploadError } = await supabase.storage
-      .from("comprobantes")
-      .upload(filePath, file);
-
-    if (uploadError) {
-      console.warn(`Error al subir imagen a ${carpeta}:`, uploadError.message);
-      return null;
-    }
-
-    const { data } = supabase.storage.from("comprobantes").getPublicUrl(filePath);
-    return data?.publicUrl || null;
-  };
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-
-    if (!camionSeleccionadoId) {
-      alert("⚠️ Por favor selecciona el camión cisterna de la lista.");
-      return;
-    }
-
-    const montoNum = parseFloat(monto);
-    if (!monto || isNaN(montoNum) || montoNum <= 0) {
-      alert("⚠️ Por favor ingresa un monto válido mayor a 0.");
-      return;
-    }
-
-    if (tipoRegistro === "pagado" && metodoPago !== "Efectivo") {
-      const refLimpia = referencia.trim().replace(/\D/g, "");
-      if (!refLimpia) {
-        alert("⚠️ La referencia bancaria es obligatoria para pagos por Transferencia, Pago Móvil o Punto.");
-        return;
-      }
-      if (!/^\d{4,12}$/.test(refLimpia)) {
-        alert("⚠️ La referencia bancaria debe contener únicamente números y tener entre 4 y 12 dígitos.");
-        return;
-      }
-    }
-
-    // 📸 Foto de la cisterna en el pozo: OBLIGATORIA para el registrador
-    if (!fotoCamion) {
-      alert("⚠️ La foto de la cisterna cargando en el pozo es obligatoria para el registrador.");
-      return;
-    }
-
-    // 📸 Foto del comprobante de pago: OBLIGATORIA para recargas pagadas por transferencia o pago móvil (NO para efectivo en taquilla)
-    if (tipoRegistro === "pagado" && metodoPago !== "Efectivo" && !fotoComprobante) {
-      alert(`⚠️ La foto del comprobante de pago es obligatoria cuando se marca como pagado mediante ${metodoPago}.`);
-      return;
-    }
-
-    setGuardando(true);
-    setMensajeExito("");
-
-    try {
-      let urlFotoCamion = null;
-      let urlComprobante = null;
-
-      if (fotoCamion) {
-        urlFotoCamion = await subirFoto(fotoCamion, "camiones");
-      }
-
-      if (tipoRegistro === "pagado" && metodoPago !== "Efectivo" && fotoComprobante) {
-        urlComprobante = await subirFoto(fotoComprobante, "pagos");
-      }
-
-      const fechaActual = new Date().toISOString();
-      const esPagado = tipoRegistro === "pagado";
-      const estatusFinal = esPagado ? "pagado" : "pendiente";
-      const metodoFinal = esPagado ? metodoPago : "Deuda";
-      const referenciaFinal = esPagado && metodoPago !== "Efectivo" ? referencia.trim() : null;
-
-      const registroPayload = {
-        camion_id: camionSeleccionadoId,
-        monto: montoNum,
-        metodo: metodoFinal,
-        referencia: referenciaFinal,
-        fecha_carga: fechaActual,
-        url_foto: urlFotoCamion,
-        estatus: estatusFinal,
-      };
-
-      const payloadExtendido = { ...registroPayload };
-      if (urlComprobante) payloadExtendido.url_comprobante = urlComprobante;
-      if (user?.id) payloadExtendido.usuario_id = user.id;
-      if (nota.trim()) payloadExtendido.nota = nota.trim();
-
-      // Intento con campos extendidos
-      let { data: nuevoReg, error: insertError } = await supabase
-        .from("registros_carga")
-        .insert([payloadExtendido])
-        .select(`
-          id,
-          monto,
-          metodo,
-          referencia,
-          fecha_carga,
-          estatus,
-          camiones ( placa, chofer, capacidad )
-        `)
-        .single();
-
-      if (insertError) {
-        console.warn("Reintentando con payload base:", insertError.message);
-        const { data: fallbackReg, error: errFallback } = await supabase
+      } else {
+        // Fallback: mostrar el último registro global si aún no tiene registros en su usuario
+        const { data: globalData } = await supabase
           .from("registros_carga")
-          .insert([registroPayload])
           .select(`
             id,
             monto,
@@ -281,62 +84,87 @@ export function DashboardRegistrador() {
             referencia,
             fecha_carga,
             estatus,
-            camiones ( placa, chofer, capacidad )
+            url_foto,
+            url_comprobante,
+            camiones (
+              placa,
+              chofer,
+              capacidad,
+              modelo,
+              cedula
+            )
           `)
-          .single();
+          .order("fecha_carga", { ascending: false })
+          .limit(1);
 
-        insertError = errFallback;
-        nuevoReg = fallbackReg;
+        if (globalData && globalData.length > 0) {
+          setUltimoRegistro(globalData[0]);
+        }
       }
-
-      if (insertError) throw insertError;
-
-      const camionObj = camiones.find((c) => String(c.id) === String(camionSeleccionadoId));
-      const msg = esPagado
-        ? `✅ ¡Recarga de $${montoNum} (${camionObj?.placa || "Camión"}) registrada como PAGADA!`
-        : `⏳ ¡Recarga de $${montoNum} (${camionObj?.placa || "Camión"}) registrada como DEUDA en Cuentas por Cobrar!`;
-
-      setMensajeExito(msg);
-      if (nuevoReg) setUltimoRegistro(nuevoReg);
-
-      const datosNota = {
-        camion: camionObj ? { ...camionObj } : null,
-        cedula: camionObj?.cedula || null,
-        monto: montoNum,
-        metodo: metodoFinal,
-        referencia: referenciaFinal,
-        fecha: fechaActual,
-        nota: nota.trim(),
-        estatus: estatusFinal,
-        fotoUrl: previewCamion || fotoCamion || urlFotoCamion,
-      };
-
-      limpiarCampos();
-      window.scrollTo({ top: 0, behavior: "smooth" });
-
-      // 📄 Prompt para generar / compartir la Nota de Entrega digital
-      avisarYCompartirNotaEntrega(datosNota);
     } catch (err) {
-      console.error("Error al registrar recarga:", err);
-      alert(`Error al registrar recarga: ${err.message || "Error desconocido"}`);
+      console.warn("No se pudo cargar el último registro:", err);
     } finally {
-      setGuardando(false);
+      setCargandoUltimo(false);
     }
   };
 
-  const camionesFiltrados = useMemo(() => {
-    if (!busquedaCamion.trim()) return camiones;
-    const q = busquedaCamion.toLowerCase().trim();
-    return camiones.filter(
-      (c) =>
-        c.placa?.toLowerCase().includes(q) ||
-        c.chofer?.toLowerCase().includes(q) ||
-        c.modelo?.toLowerCase().includes(q) ||
-        String(c.capacidad).includes(q)
-    );
-  }, [camiones, busquedaCamion]);
+  const cargarMetricasHoy = async () => {
+    setCargandoMetricas(true);
+    try {
+      const hoy = new Date();
+      hoy.setHours(0, 0, 0, 0);
+      const inicioDia = hoy.toISOString();
 
-  const camionActual = camiones.find((c) => String(c.id) === String(camionSeleccionadoId));
+      let query = supabase
+        .from("registros_carga")
+        .select(`
+          id,
+          monto,
+          estatus,
+          camiones ( capacidad )
+        `)
+        .gte("fecha_carga", inicioDia);
+
+      if (user?.id) {
+        query = query.eq("usuario_id", user.id);
+      }
+
+      const { data, error } = await query;
+      if (!error && data) {
+        let totalCargas = data.length;
+        let totalLitros = 0;
+        let montoPagado = 0;
+        let montoDeuda = 0;
+
+        data.forEach((r) => {
+          const cap = Number(r.camiones?.capacidad) || 0;
+          totalLitros += cap;
+          const m = Number(r.monto) || 0;
+          if (r.estatus === "pagado") {
+            montoPagado += m;
+          } else {
+            montoDeuda += m;
+          }
+        });
+
+        setMetricasHoy({
+          totalCargas,
+          totalLitros,
+          montoPagado,
+          montoDeuda,
+        });
+      }
+    } catch (err) {
+      console.warn("No se pudieron cargar las métricas de hoy:", err);
+    } finally {
+      setCargandoMetricas(false);
+    }
+  };
+
+  const handleRecargaCompletada = () => {
+    cargarUltimoRegistro();
+    cargarMetricasHoy();
+  };
 
   return (
     <Container>
@@ -347,356 +175,189 @@ export function DashboardRegistrador() {
         </div>
         <h2>Bienvenido, {user?.name || "Operador"} 👋</h2>
         <p>
-          Ingresa los datos de la unidad cisterna para procesar la recarga al instante o asignarla a cuentas por cobrar.
+          Terminal de despacho y control operativo del pozo. Inicia el asistente de recarga para
+          seleccionar el chofer, asignar la cisterna y registrar el despacho con su cobro correspondiente.
         </p>
       </TopTerminalHeader>
 
-      {/* MENSAJE DE ÉXITO PROMINENTE */}
-      {mensajeExito && (
-        <SuccessBanner>
-          <MdDoneAll className="success-icon" />
-          <div className="text">
-            <strong>¡Registro Completado con Éxito!</strong>
-            <p>{mensajeExito}</p>
+      {/* 📊 MINI MÉTRICAS DEL TURNO / HOY */}
+      <MetricsBar>
+        <MetricItem>
+          <div className="icon-box blue">
+            <MdWaterDrop />
           </div>
-          <button type="button" onClick={() => setMensajeExito("")}>
-            ✕
-          </button>
-        </SuccessBanner>
-      )}
+          <div className="info">
+            <span className="label">Recargas Despachadas Hoy</span>
+            <span className="value">
+              {cargandoMetricas ? "..." : `${metricasHoy.totalCargas} viajes`}
+            </span>
+          </div>
+        </MetricItem>
+
+        <MetricItem>
+          <div className="icon-box cyan">
+            <MdLocalShipping />
+          </div>
+          <div className="info">
+            <span className="label">Volumen Suministrado Hoy</span>
+            <span className="value">
+              {cargandoMetricas ? "..." : `${metricasHoy.totalLitros.toLocaleString()} Lts`}
+            </span>
+          </div>
+        </MetricItem>
+
+        <MetricItem>
+          <div className="icon-box green">
+            <MdAttachMoney />
+          </div>
+          <div className="info">
+            <span className="label">Cobrado de Contado</span>
+            <span className="value text-green">
+              {cargandoMetricas ? "..." : `$${metricasHoy.montoPagado.toFixed(2)}`}
+            </span>
+          </div>
+        </MetricItem>
+
+        <MetricItem>
+          <div className="icon-box amber">
+            <MdHourglassEmpty />
+          </div>
+          <div className="info">
+            <span className="label">Cargado a Deuda</span>
+            <span className="value text-amber">
+              {cargandoMetricas ? "..." : `$${metricasHoy.montoDeuda.toFixed(2)}`}
+            </span>
+          </div>
+        </MetricItem>
+      </MetricsBar>
 
       <GridWrapper>
-        {/* FORMULARIO PRINCIPAL DE DESPACHO */}
-        <DispatchCard onSubmit={handleSubmit}>
-          <CardHeader>
-            <div className="icon-header">
-              <MdLocalShipping />
+        {/* ========================================================= */}
+        {/* TARJETA HERO PRINCIPAL: LANZADOR DEL MODAL DE RECARGA    */}
+        {/* ========================================================= */}
+        <HeroDispatchCard>
+          <HeroGlowEffect />
+          <HeroHeader>
+            <div className="hero-icon-bubble">
+              <MdWaterDrop />
             </div>
             <div>
-              <h3>Registrar Recarga de Cisterna</h3>
-              <p>Completa la información del viaje y confirma el despacho</p>
+              <h3>Despacho Rápido de Cisterna</h3>
+              <p>Asistente guiado de 3 pasos: Chofer → Cisterna → Cobro y Evidencia</p>
             </div>
-          </CardHeader>
+          </HeroHeader>
 
-          {/* 1. SELECCIÓN DE CAMIÓN CON COMBOBOX */}
-          <FormGroup ref={comboboxRef} style={{ position: "relative" }}>
-            <Label>
-              <MdLocalShipping className="icon" /> Buscar y Seleccionar Camión Cisterna: <span className="req">*</span>
-            </Label>
+          <HeroBody>
+            <p className="hero-text">
+              Para registrar una nueva carga de agua en el llenadero, presiona el botón inferior. 
+              El asistente te permitirá elegir el chofer, seleccionar su camión cisterna, tomar la 
+              foto obligatoria en el pozo y registrar el pago en taquilla o a cuentas por cobrar.
+            </p>
 
-            <ComboboxInputWrapper>
-              <MdSearch className="search-icon" />
-              <SearchInput
-                type="text"
-                placeholder="Escribe la placa, nombre del chofer o modelo..."
-                value={busquedaCamion}
-                onChange={(e) => {
-                  setBusquedaCamion(e.target.value);
-                  setMostrarMenuCamiones(true);
-                  if (camionSeleccionadoId) setCamionSeleccionadoId("");
-                }}
-                onFocus={() => setMostrarMenuCamiones(true)}
-              />
-              {cargandoCamiones && <SpinnerInline />}
-            </ComboboxInputWrapper>
+            <StepFlowPreview>
+              <div className="step-pill">
+                <span className="num">1</span>
+                <span>Elegir Chofer</span>
+              </div>
+              <MdArrowForward className="arrow" />
+              <div className="step-pill">
+                <span className="num">2</span>
+                <span>Elegir Cisterna</span>
+              </div>
+              <MdArrowForward className="arrow" />
+              <div className="step-pill">
+                <span className="num">3</span>
+                <span>Cobro y Foto</span>
+              </div>
+            </StepFlowPreview>
 
-            {mostrarMenuCamiones && (
-              <ComboboxDropdown>
-                {camionesFiltrados.length === 0 ? (
-                  <DropdownEmpty>
-                    No se encontraron camiones con esa placa o chofer.
-                  </DropdownEmpty>
-                ) : (
-                  camionesFiltrados.map((c) => (
-                    <ComboboxItem
-                      key={c.id}
-                      $selected={String(c.id) === String(camionSeleccionadoId)}
-                      onClick={() => {
-                        setCamionSeleccionadoId(c.id);
-                        setBusquedaCamion(`${c.placa} — ${c.chofer}`);
-                        setMostrarMenuCamiones(false);
-                      }}
-                    >
-                      <div className="item-plate">
-                        <span className="plate-badge">{c.placa}</span>
-                        <span className="driver-name">{c.chofer}</span>
-                      </div>
-                      <div className="item-specs">
-                        <span>💧 {c.capacidad?.toLocaleString()} Lts</span>
-                        {c.modelo && <span className="model"> • {c.modelo}</span>}
-                      </div>
-                    </ComboboxItem>
-                  ))
-                )}
-              </ComboboxDropdown>
-            )}
+            <BotonLanzarModal
+              type="button"
+              onClick={() => setModalRecargaAbierto(true)}
+            >
+              <MdWaterDrop className="btn-drop-icon" />
+              <span>💧 Registrar Recarga de Agua</span>
+            </BotonLanzarModal>
+          </HeroBody>
+        </HeroDispatchCard>
 
-            {camionActual && (
-              <SelectedTruckPill>
-                <div className="pill-icon">
-                  <MdCheckCircle />
-                </div>
-                <div className="pill-info">
-                  <strong>{camionActual.placa}</strong> — {camionActual.chofer}
-                  <span className="sub">
-                    Capacidad: {camionActual.capacidad?.toLocaleString()} Lts {camionActual.modelo ? `| Modelo: ${camionActual.modelo}` : ""}
-                  </span>
-                </div>
-              </SelectedTruckPill>
-            )}
-          </FormGroup>
-
-          {/* 2. MONTO DE LA RECARGA */}
-          <FormGroup>
-            <Label>
-              <MdAttachMoney className="icon" /> Monto de la Recarga ($ USD): <span className="req">*</span>
-            </Label>
-            <Input
-              type="number"
-              step="0.01"
-              placeholder="Ej: 25.00"
-              value={monto}
-              onChange={(e) => setMonto(e.target.value)}
-              required
-            />
-          </FormGroup>
-
-          {/* 3. TIPO DE REGISTRO: PAGADO vs DEUDA */}
-          <FormGroup>
-            <Label>Estatus del Cobro de la Recarga:</Label>
-            <TypeSelectorGrid>
-              <TypeButton
-                type="button"
-                $active={tipoRegistro === "pagado"}
-                $variant="success"
-                onClick={() => setTipoRegistro("pagado")}
-              >
-                <MdCheckCircle className="btn-icon" />
-                <div className="btn-text">
-                  <span className="btn-title">Pagado al Momento</span>
-                  <span className="btn-desc">Registrar referencia de pago</span>
-                </div>
-              </TypeButton>
-
-              <TypeButton
-                type="button"
-                $active={tipoRegistro === "deuda"}
-                $variant="warning"
-                onClick={() => setTipoRegistro("deuda")}
-              >
-                <MdHourglassEmpty className="btn-icon" />
-                <div className="btn-text">
-                  <span className="btn-title">Cargar como Deuda</span>
-                  <span className="btn-desc">Cuentas por Cobrar</span>
-                </div>
-              </TypeButton>
-            </TypeSelectorGrid>
-          </FormGroup>
-
-          {/* 4. CAMPOS SI ES PAGADO */}
-          {tipoRegistro === "pagado" && (
-            <PaymentFieldsBox>
-              <PaymentFieldsGrid>
-                <FormGroup>
-                  <Label>
-                    <MdPayments className="icon" /> Método de Pago:
-                  </Label>
-                  <Select
-                    value={metodoPago}
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      setMetodoPago(val);
-                      if (val === "Efectivo") {
-                        setReferencia("");
-                        setFotoComprobante(null);
-                        setPreviewComprobante(null);
-                      }
-                    }}
-                  >
-                    <option value="Transferencia">Transferencia Bancaria</option>
-                    <option value="Pago Móvil">Pago Móvil</option>
-                    <option value="Efectivo">Efectivo ($ USD o Bs)</option>
-                    <option value="Punto de Venta">Punto de Venta</option>
-                  </Select>
-                </FormGroup>
-
-                <FormGroup>
-                  <Label>
-                    <MdReceipt className="icon" /> N° Referencia Bancaria:
-                    {metodoPago !== "Efectivo" && <span className="req"> *</span>}
-                  </Label>
-                  <Input
-                    type="text"
-                    inputMode="numeric"
-                    pattern="[0-9]*"
-                    maxLength={12}
-                    placeholder={metodoPago === "Efectivo" ? "Opcional para efectivo" : "Ej: 98451230 (solo números, 4-12 dígitos)"}
-                    value={referencia}
-                    onChange={(e) => setReferencia(e.target.value.replace(/\D/g, "").slice(0, 12))}
-                    required={metodoPago !== "Efectivo"}
-                  />
-                  {metodoPago !== "Efectivo" && (
-                    <small style={{ color: "#94a3b8", fontSize: "11px", marginTop: "4px", display: "block" }}>
-                      ℹ️ Solo números sin letras ni guiones (entre 4 y 12 dígitos).
-                    </small>
-                  )}
-                </FormGroup>
-              </PaymentFieldsGrid>
-
-              {/* FOTO COMPROBANTE DE PAGO (SOLO TRANSFERENCIA / NO EFECTIVO) */}
-              {metodoPago !== "Efectivo" && (
-                <FormGroup>
-                  <Label>
-                    <MdPhotoCamera className="icon" /> Foto del Comprobante de Pago: <span className="req">* Obligatoria</span>
-                  </Label>
-                  <PhotoUploadContainer>
-                    {previewComprobante ? (
-                      <PhotoPreviewWrapper>
-                        <img src={previewComprobante} alt="Preview comprobante" />
-                        <RemovePhotoBtn
-                          type="button"
-                          onClick={() => {
-                            setFotoComprobante(null);
-                            setPreviewComprobante(null);
-                          }}
-                        >
-                          <MdDeleteOutline /> Quitar
-                        </RemovePhotoBtn>
-                      </PhotoPreviewWrapper>
-                    ) : (
-                      <UploadDropzone>
-                        <input
-                          type="file"
-                          accept="image/*"
-                          id="foto-comprobante-input"
-                          onChange={handleFotoComprobanteChange}
-                        />
-                        <label htmlFor="foto-comprobante-input">
-                          <MdPhotoCamera className="upload-icon" />
-                          <span>Subir captura del comprobante bancario (Requerido)</span>
-                        </label>
-                      </UploadDropzone>
-                    )}
-                  </PhotoUploadContainer>
-                </FormGroup>
-              )}
-            </PaymentFieldsBox>
-          )}
-
-          {/* 5. FOTO DEL CAMIÓN EN EL POZO */}
-          <FormGroup>
-            <Label>
-              <MdPhotoCamera className="icon" /> Foto de la Cisterna en el Pozo: <span className="req">* Obligatoria</span>
-            </Label>
-            <PhotoUploadContainer>
-              {previewCamion ? (
-                <PhotoPreviewWrapper>
-                  <img src={previewCamion} alt="Preview cisterna" />
-                  <RemovePhotoBtn
-                    type="button"
-                    onClick={() => {
-                      setFotoCamion(null);
-                      setPreviewCamion(null);
-                    }}
-                  >
-                    <MdDeleteOutline /> Quitar
-                  </RemovePhotoBtn>
-                </PhotoPreviewWrapper>
-              ) : (
-                <UploadDropzone>
-                  <input
-                    type="file"
-                    accept="image/*"
-                    id="foto-camion-input"
-                    onChange={handleFotoCamionChange}
-                  />
-                  <label htmlFor="foto-camion-input">
-                    <MdLocalShipping className="upload-icon" />
-                    <span>Subir foto de la cisterna cargando</span>
-                  </label>
-                </UploadDropzone>
-              )}
-            </PhotoUploadContainer>
-          </FormGroup>
-
-          {/* 6. NOTA ADICIONAL */}
-          <FormGroup>
-            <Label>
-              <MdEditNote className="icon" /> Nota u Observación (Opcional):
-            </Label>
-            <TextArea
-              rows={2}
-              placeholder="Añade detalles sobre la carga, viaje, chofer o incidencias..."
-              value={nota}
-              onChange={(e) => setNota(e.target.value)}
-            />
-          </FormGroup>
-
-          {/* BOTÓN DE DESPACHO */}
-          <SubmitBtn type="submit" disabled={guardando}>
-            {guardando ? (
-              "Procesando Despacho..."
-            ) : tipoRegistro === "pagado" ? (
-              "💧 Confirmar y Registrar Recarga Pagada"
-            ) : (
-              "⏳ Registrar Recarga como Deuda"
-            )}
-          </SubmitBtn>
-        </DispatchCard>
-
-        {/* SIDEBAR INFORMATIVO: ÚLTIMA RECARGA DESPACHADA */}
+        {/* ========================================================= */}
+        {/* PANEL LATERAL: ÚLTIMO REGISTRO E INSTRUCCIONES            */}
+        {/* ========================================================= */}
         <SidebarPanel>
+          {/* ÚLTIMA RECARGA REGISTRADA */}
           <LastRecordCard>
-            <div className="card-head">
-              <MdOutlineAccessTime className="head-icon" />
-              <h4>Última Recarga Registrada</h4>
+            <div className="card-top">
+              <div className="title-row">
+                <MdOutlineAccessTime className="clock-icon" />
+                <h4>Última Recarga Registrada</h4>
+              </div>
+              {ultimoRegistro && (
+                <span className={`status-badge ${ultimoRegistro.estatus}`}>
+                  {ultimoRegistro.estatus === "pagado" ? "Pagado" : "Por Cobrar"}
+                </span>
+              )}
             </div>
 
-            {ultimoRegistro ? (
+            {cargandoUltimo ? (
+              <div className="loading-state">
+                <p>Cargando último despacho...</p>
+              </div>
+            ) : ultimoRegistro ? (
               <div className="record-details">
-                <div className="record-badge-row">
-                  <span className={`status-tag ${ultimoRegistro.estatus}`}>
-                    {ultimoRegistro.estatus === "pagado" ? "✓ Pagado" : "⏳ Deuda"}
+                <div className="record-main-stat">
+                  <span className="plate-badge">
+                    {ultimoRegistro.camiones?.placa || "S/P"}
                   </span>
-                  <span className="amount">${Number(ultimoRegistro.monto).toFixed(2)}</span>
-                </div>
-
-                <div className="record-info-line">
-                  <span className="lbl">Placa:</span>
-                  <strong>{ultimoRegistro.camiones?.placa || "N/A"}</strong>
+                  <span className="amount">
+                    ${Number(ultimoRegistro.monto || 0).toFixed(2)}
+                  </span>
                 </div>
 
                 <div className="record-info-line">
                   <span className="lbl">Chofer:</span>
-                  <span>{ultimoRegistro.camiones?.chofer || "Sin chofer"}</span>
+                  <strong className="val">
+                    {ultimoRegistro.camiones?.chofer || "Sin Chofer"}
+                    {ultimoRegistro.camiones?.cedula && ` (C.I. ${ultimoRegistro.camiones.cedula})`}
+                  </strong>
                 </div>
 
                 <div className="record-info-line">
                   <span className="lbl">Capacidad:</span>
-                  <span>{ultimoRegistro.camiones?.capacidad?.toLocaleString() || "--"} Lts</span>
+                  <span className="val">
+                    💧 {Number(ultimoRegistro.camiones?.capacidad || 0).toLocaleString()} Lts
+                    {ultimoRegistro.camiones?.modelo && ` • ${ultimoRegistro.camiones.modelo}`}
+                  </span>
                 </div>
 
                 <div className="record-info-line">
-                  <span className="lbl">Método:</span>
-                  <span>{ultimoRegistro.metodo}</span>
+                  <span className="lbl">Método de Cobro:</span>
+                  <span className="val">
+                    {ultimoRegistro.metodo || "Efectivo"}
+                    {ultimoRegistro.referencia && ` (Ref: ${ultimoRegistro.referencia})`}
+                  </span>
                 </div>
-
-                {ultimoRegistro.referencia && (
-                  <div className="record-info-line">
-                    <span className="lbl">Referencia:</span>
-                    <span>{ultimoRegistro.referencia}</span>
-                  </div>
-                )}
 
                 <div className="record-footer">
                   <MdOutlineAccessTime />
                   <span>
+                    {new Date(ultimoRegistro.fecha_carga).toLocaleDateString("es-VE", {
+                      day: "2-digit",
+                      month: "short",
+                    })}{" "}
+                    -{" "}
                     {new Date(ultimoRegistro.fecha_carga).toLocaleTimeString("es-VE", {
                       hour: "2-digit",
                       minute: "2-digit",
                       hour12: true,
                     })}
                   </span>
+
+                  {ultimoRegistro.url_foto && (
+                    <span className="photo-tag" title="Foto de la cisterna registrada">
+                      <MdImage /> Con foto
+                    </span>
+                  )}
                 </div>
               </div>
             ) : (
@@ -707,18 +368,36 @@ export function DashboardRegistrador() {
             )}
           </LastRecordCard>
 
+          {/* INSTRUCCIONES OPERATIVAS */}
           <InstructionCard>
-            <h5>📋 Instrucciones Operativas</h5>
+            <div className="card-top">
+              <MdInfoOutline className="info-icon" />
+              <h5>Instrucciones Operativas del Pozo</h5>
+            </div>
             <ul>
-              <li>Busca el camión por su placa o chofer en el selector superior.</li>
-              <li>Indica el monto acordado para la recarga en dólares ($).</li>
-              <li>Si paga en el pozo, selecciona "Pagado al Momento" y coloca la referencia.</li>
-              <li>Si es a crédito, márcalo como "Cargar como Deuda".</li>
-              <li>Para agregar un nuevo camión o chofer, dirígete a la pestaña <strong>Camiones</strong> en la barra superior.</li>
+              <li>
+                <strong>Paso 1:</strong> Selecciona el chofer de la cisterna en la cuadrícula o registra uno nuevo si es su primera vez.
+              </li>
+              <li>
+                <strong>Paso 2:</strong> Elige la unidad cisterna que cargará agua o vincúlala si ya está en el sistema.
+              </li>
+              <li>
+                <strong>Paso 3 (Obligatorio):</strong> Como registrador del llenadero, debes tomar o adjuntar la foto de la cisterna en el pozo.
+              </li>
+              <li>
+                <strong>Paso 4:</strong> Si paga de contado (Efectivo en taquilla, Pago Móvil o Transferencia), márcalo como Pagado; si es a crédito, márcalo como Cargar como Deuda.
+              </li>
             </ul>
           </InstructionCard>
         </SidebarPanel>
       </GridWrapper>
+
+      {/* 💧 MODAL OFICIAL DE RECARGA (EL MISMO DEL ADMINISTRADOR) */}
+      <ModalRegistrarRecarga
+        isOpen={modalRecargaAbierto}
+        onClose={() => setModalRecargaAbierto(false)}
+        onRecargaExitosa={handleRecargaCompletada}
+      />
     </Container>
   );
 }
@@ -728,6 +407,18 @@ const Container = styled.div`
   max-width: 1200px;
   margin: 0 auto;
   animation: fadeIn 0.3s ease-out;
+  padding-bottom: 40px;
+
+  @keyframes fadeIn {
+    from {
+      opacity: 0;
+      transform: translateY(6px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
 `;
 
 const TopTerminalHeader = styled.div`
@@ -736,6 +427,8 @@ const TopTerminalHeader = styled.div`
   border-radius: 20px;
   padding: 24px 28px;
   margin-bottom: 24px;
+  position: relative;
+  overflow: hidden;
 
   .terminal-badge {
     display: inline-flex;
@@ -748,69 +441,115 @@ const TopTerminalHeader = styled.div`
     padding: 4px 12px;
     border-radius: 20px;
     margin-bottom: 12px;
+    border: 1px solid rgba(0, 195, 255, 0.35);
   }
 
   h2 {
     color: #ffffff;
-    font-size: 24px;
+    font-size: 26px;
     font-weight: 800;
     margin: 0 0 6px 0;
+    letter-spacing: -0.5px;
   }
 
   p {
     color: #94a3b8;
-    font-size: 13px;
+    font-size: 14px;
+    line-height: 1.5;
     margin: 0;
+    max-width: 800px;
   }
 `;
 
-const SuccessBanner = styled.div`
-  background: rgba(34, 197, 94, 0.15);
-  border: 1px solid rgba(34, 197, 94, 0.4);
-  border-radius: 16px;
-  padding: 16px 20px;
+const MetricsBar = styled.div`
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 16px;
   margin-bottom: 24px;
+`;
+
+const MetricItem = styled.div`
+  background: rgba(21, 28, 45, 0.65);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 16px;
+  padding: 16px 18px;
   display: flex;
   align-items: center;
   gap: 14px;
-  color: #86efac;
-  animation: slideDown 0.3s ease;
+  transition: all 0.2s ease;
 
-  .success-icon {
-    font-size: 28px;
+  &:hover {
+    border-color: rgba(0, 195, 255, 0.3);
+    transform: translateY(-2px);
+  }
+
+  .icon-box {
+    width: 44px;
+    height: 44px;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 22px;
     flex-shrink: 0;
-    color: #22c55e;
+
+    &.blue {
+      background: rgba(0, 195, 255, 0.15);
+      color: #38bdf8;
+      border: 1px solid rgba(0, 195, 255, 0.3);
+    }
+    &.cyan {
+      background: rgba(6, 182, 212, 0.15);
+      color: #06b6d4;
+      border: 1px solid rgba(6, 182, 212, 0.3);
+    }
+    &.green {
+      background: rgba(34, 197, 94, 0.15);
+      color: #22c55e;
+      border: 1px solid rgba(34, 197, 94, 0.3);
+    }
+    &.amber {
+      background: rgba(245, 158, 11, 0.15);
+      color: #f59e0b;
+      border: 1px solid rgba(245, 158, 11, 0.3);
+    }
   }
 
-  .text {
-    flex: 1;
+  .info {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
 
-    strong {
-      display: block;
-      font-size: 14px;
-      color: #ffffff;
+    .label {
+      font-size: 11px;
+      color: #94a3b8;
+      font-weight: 500;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
 
-    p {
-      margin: 2px 0 0 0;
-      font-size: 13px;
-      color: #86efac;
-    }
-  }
+    .value {
+      font-size: 18px;
+      font-weight: 800;
+      color: #f8fafc;
+      margin-top: 2px;
 
-  button {
-    background: transparent;
-    border: none;
-    color: #86efac;
-    cursor: pointer;
-    font-size: 16px;
-    padding: 4px;
+      &.text-green {
+        color: #22c55e;
+      }
+      &.text-amber {
+        color: #f59e0b;
+      }
+    }
   }
 `;
 
 const GridWrapper = styled.div`
   display: grid;
-  grid-template-columns: 1fr 340px;
+  grid-template-columns: 1fr 380px;
   gap: 24px;
 
   @media (max-width: 900px) {
@@ -818,428 +557,162 @@ const GridWrapper = styled.div`
   }
 `;
 
-const DispatchCard = styled.form`
-  background: rgba(21, 28, 45, 0.75);
-  backdrop-filter: blur(16px);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+const HeroDispatchCard = styled.div`
+  background: rgba(21, 28, 45, 0.7);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid rgba(0, 195, 255, 0.3);
   border-radius: 20px;
-  padding: 30px;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
-
-  @media (max-width: 600px) {
-    padding: 20px;
-  }
+  padding: 32px 28px;
+  box-shadow: 0 12px 35px rgba(0, 0, 0, 0.35);
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
 `;
 
-const CardHeader = styled.div`
+const HeroGlowEffect = styled.div`
+  position: absolute;
+  top: -50px;
+  right: -50px;
+  width: 250px;
+  height: 250px;
+  background: radial-gradient(circle, rgba(0, 195, 255, 0.15) 0%, transparent 70%);
+  pointer-events: none;
+`;
+
+const HeroHeader = styled.div`
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 18px;
   margin-bottom: 24px;
-  padding-bottom: 16px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  position: relative;
+  z-index: 1;
 
-  .icon-header {
-    width: 46px;
-    height: 46px;
-    border-radius: 12px;
-    background: rgba(0, 195, 255, 0.15);
-    color: #00c3ff;
+  .hero-icon-bubble {
+    width: 60px;
+    height: 60px;
+    border-radius: 18px;
+    background: linear-gradient(135deg, rgba(0, 195, 255, 0.3), rgba(0, 114, 255, 0.3));
+    border: 1px solid rgba(0, 195, 255, 0.5);
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 24px;
+    font-size: 32px;
+    color: #38bdf8;
+    box-shadow: 0 0 25px rgba(0, 195, 255, 0.3);
     flex-shrink: 0;
   }
 
   h3 {
+    font-size: 22px;
+    font-weight: 800;
     color: #ffffff;
-    font-size: 18px;
-    font-weight: 700;
     margin: 0 0 4px 0;
+    letter-spacing: -0.3px;
   }
 
   p {
     color: #94a3b8;
-    font-size: 12px;
+    font-size: 13px;
     margin: 0;
   }
 `;
 
-const FormGroup = styled.div`
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  margin-bottom: 18px;
-`;
-
-const Label = styled.label`
-  font-size: 13px;
-  font-weight: 500;
-  color: #cbd5e1;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-
-  .icon {
-    color: #00c3ff;
-    font-size: 16px;
-  }
-
-  .req {
-    color: #ef4444;
-  }
-`;
-
-const ComboboxInputWrapper = styled.div`
+const HeroBody = styled.div`
   position: relative;
-  width: 100%;
+  z-index: 1;
 
-  .search-icon {
-    position: absolute;
-    left: 14px;
-    top: 50%;
-    transform: translateY(-50%);
-    color: #94a3b8;
-    font-size: 18px;
+  .hero-text {
+    color: #cbd5e1;
+    font-size: 14px;
+    line-height: 1.6;
+    margin-bottom: 24px;
   }
 `;
 
-const SearchInput = styled.input`
-  width: 100%;
-  padding: 13px 14px 13px 42px;
-  background: rgba(15, 23, 42, 0.7);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 12px;
-  color: #ffffff;
-  font-size: 14px;
-  outline: none;
-  box-sizing: border-box;
-
-  &:focus {
-    border-color: #00c3ff;
-    box-shadow: 0 0 12px rgba(0, 195, 255, 0.25);
-  }
-`;
-
-const SpinnerInline = styled.div`
-  position: absolute;
-  right: 14px;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 16px;
-  height: 16px;
-  border: 2px solid rgba(0, 195, 255, 0.3);
-  border-top-color: #00c3ff;
-  border-radius: 50%;
-  animation: spin 0.8s linear infinite;
-`;
-
-const ComboboxDropdown = styled.div`
-  position: absolute;
-  top: 100%;
-  left: 0;
-  right: 0;
-  margin-top: 6px;
-  background: #111827;
-  border: 1px solid rgba(0, 195, 255, 0.3);
-  border-radius: 12px;
-  max-height: 240px;
-  overflow-y: auto;
-  z-index: 50;
-  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.6);
-`;
-
-const ComboboxItem = styled.div`
-  padding: 10px 14px;
-  cursor: pointer;
+const StepFlowPreview = styled.div`
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-  background: ${(props) => (props.$selected ? "rgba(0, 195, 255, 0.15)" : "transparent")};
+  gap: 10px;
+  background: rgba(11, 15, 25, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 14px;
+  padding: 14px 18px;
+  margin-bottom: 28px;
+  overflow-x: auto;
 
-  &:hover {
-    background: rgba(0, 195, 255, 0.1);
-  }
-
-  .item-plate {
+  .step-pill {
     display: flex;
     align-items: center;
     gap: 8px;
+    color: #f8fafc;
+    font-size: 13px;
+    font-weight: 600;
+    white-space: nowrap;
 
-    .plate-badge {
+    .num {
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
       background: rgba(0, 195, 255, 0.2);
       color: #38bdf8;
+      border: 1px solid rgba(0, 195, 255, 0.4);
+      display: flex;
+      align-items: center;
+      justify-content: center;
       font-size: 11px;
-      font-weight: 700;
-      padding: 2px 6px;
-      border-radius: 4px;
-      letter-spacing: 0.5px;
-    }
-
-    .driver-name {
-      color: #ffffff;
-      font-size: 13px;
-      font-weight: 500;
+      font-weight: 800;
     }
   }
 
-  .item-specs {
-    font-size: 12px;
-    color: #94a3b8;
-  }
-`;
-
-const DropdownEmpty = styled.div`
-  padding: 16px;
-  text-align: center;
-  color: #94a3b8;
-  font-size: 13px;
-`;
-
-const SelectedTruckPill = styled.div`
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-top: 8px;
-  padding: 10px 14px;
-  background: rgba(0, 195, 255, 0.08);
-  border: 1px solid rgba(0, 195, 255, 0.25);
-  border-radius: 10px;
-
-  .pill-icon {
-    color: #38bdf8;
-    font-size: 18px;
+  .arrow {
+    color: #64748b;
+    font-size: 16px;
     flex-shrink: 0;
   }
-
-  .pill-info {
-    font-size: 13px;
-    color: #ffffff;
-
-    .sub {
-      display: block;
-      font-size: 11px;
-      color: #94a3b8;
-      margin-top: 2px;
-    }
-  }
 `;
 
-const Input = styled.input`
+const BotonLanzarModal = styled.button`
   width: 100%;
-  padding: 12px 14px;
-  background: rgba(15, 23, 42, 0.7);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 12px;
-  color: #ffffff;
-  font-size: 14px;
-  outline: none;
-  box-sizing: border-box;
-
-  &:focus {
-    border-color: #00c3ff;
-    box-shadow: 0 0 12px rgba(0, 195, 255, 0.25);
-  }
-`;
-
-const Select = styled.select`
-  width: 100%;
-  padding: 12px 14px;
-  background: rgba(15, 23, 42, 0.7);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 12px;
-  color: #ffffff;
-  font-size: 14px;
-  outline: none;
-  box-sizing: border-box;
-
-  option {
-    background: #111827;
-    color: #ffffff;
-  }
-`;
-
-const TextArea = styled.textarea`
-  width: 100%;
-  padding: 12px 14px;
-  background: rgba(15, 23, 42, 0.7);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 12px;
-  color: #ffffff;
-  font-size: 13px;
-  outline: none;
-  resize: vertical;
-  box-sizing: border-box;
-
-  &:focus {
-    border-color: #00c3ff;
-  }
-`;
-
-const TypeSelectorGrid = styled.div`
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px;
-
-  @media (max-width: 500px) {
-    grid-template-columns: 1fr;
-  }
-`;
-
-const TypeButton = styled.button`
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 14px;
-  border-radius: 12px;
-  cursor: pointer;
-  transition: all 0.2s;
-  text-align: left;
-  border: 1px solid
-    ${(props) =>
-      props.$active
-        ? props.$variant === "success"
-          ? "#22c55e"
-          : "#eab308"
-        : "rgba(255, 255, 255, 0.08)"};
-  background: ${(props) =>
-    props.$active
-      ? props.$variant === "success"
-        ? "rgba(34, 197, 94, 0.15)"
-        : "rgba(234, 179, 8, 0.15)"
-      : "rgba(15, 23, 42, 0.6)"};
-
-  .btn-icon {
-    font-size: 22px;
-    color: ${(props) => (props.$variant === "success" ? "#22c55e" : "#eab308")};
-    flex-shrink: 0;
-  }
-
-  .btn-text {
-    .btn-title {
-      display: block;
-      font-size: 13px;
-      font-weight: 700;
-      color: #ffffff;
-    }
-    .btn-desc {
-      display: block;
-      font-size: 11px;
-      color: #94a3b8;
-      margin-top: 2px;
-    }
-  }
-`;
-
-const PaymentFieldsBox = styled.div`
-  background: rgba(15, 23, 42, 0.4);
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  padding: 18px 24px;
   border-radius: 14px;
-  padding: 16px;
-  margin-bottom: 18px;
-`;
-
-const PaymentFieldsGrid = styled.div`
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 14px;
-
-  @media (max-width: 600px) {
-    grid-template-columns: 1fr;
-  }
-`;
-
-const PhotoUploadContainer = styled.div`
-  margin-top: 4px;
-`;
-
-const UploadDropzone = styled.div`
-  border: 1px dashed rgba(255, 255, 255, 0.15);
-  border-radius: 12px;
-  padding: 16px;
-  text-align: center;
-  background: rgba(15, 23, 42, 0.4);
-  transition: all 0.2s;
-
-  &:hover {
-    border-color: #00c3ff;
-    background: rgba(0, 195, 255, 0.05);
-  }
-
-  input[type="file"] {
-    display: none;
-  }
-
-  label {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 6px;
-    cursor: pointer;
-    color: #94a3b8;
-    font-size: 12px;
-
-    .upload-icon {
-      font-size: 24px;
-      color: #00c3ff;
-    }
-  }
-`;
-
-const PhotoPreviewWrapper = styled.div`
-  position: relative;
-  display: inline-block;
-
-  img {
-    max-width: 140px;
-    max-height: 100px;
-    border-radius: 8px;
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    object-fit: cover;
-  }
-`;
-
-const RemovePhotoBtn = styled.button`
-  position: absolute;
-  top: 4px;
-  right: 4px;
-  background: rgba(239, 68, 68, 0.85);
-  color: white;
-  border: none;
-  border-radius: 6px;
-  padding: 2px 6px;
-  font-size: 10px;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  gap: 2px;
-`;
-
-const SubmitBtn = styled.button`
-  width: 100%;
-  padding: 16px;
   background: linear-gradient(135deg, #00c3ff 0%, #0072ff 100%);
   color: #ffffff;
+  font-size: 16px;
+  font-weight: 800;
   border: none;
-  border-radius: 14px;
-  font-size: 15px;
-  font-weight: 700;
   cursor: pointer;
-  transition: all 0.2s ease;
-  box-shadow: 0 4px 15px rgba(0, 195, 255, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  box-shadow: 0 8px 25px rgba(0, 195, 255, 0.35);
+  transition: all 0.25s ease;
 
-  &:hover:not(:disabled) {
+  &:hover {
     transform: translateY(-2px);
-    box-shadow: 0 8px 25px rgba(0, 195, 255, 0.45);
+    box-shadow: 0 12px 30px rgba(0, 195, 255, 0.5);
+    background: linear-gradient(135deg, #1ad0ff 0%, #0080ff 100%);
   }
 
-  &:disabled {
-    background: #334155;
-    color: #94a3b8;
-    cursor: not-allowed;
-    box-shadow: none;
+  &:active {
+    transform: translateY(0);
+  }
+
+  .btn-drop-icon {
+    font-size: 22px;
+    animation: dropBounce 2s infinite ease-in-out;
+  }
+
+  @keyframes dropBounce {
+    0%, 100% {
+      transform: translateY(0);
+    }
+    50% {
+      transform: translateY(-3px);
+    }
   }
 `;
 
@@ -1250,133 +723,187 @@ const SidebarPanel = styled.div`
 `;
 
 const LastRecordCard = styled.div`
-  background: rgba(21, 28, 45, 0.75);
-  backdrop-filter: blur(16px);
+  background: rgba(21, 28, 45, 0.7);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 18px;
   padding: 20px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
 
-  .card-head {
+  .card-top {
     display: flex;
     align-items: center;
-    gap: 8px;
+    justify-content: space-between;
+    margin-bottom: 16px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+
+    .title-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+
+      .clock-icon {
+        color: #00c3ff;
+        font-size: 18px;
+      }
+
+      h4 {
+        margin: 0;
+        font-size: 15px;
+        font-weight: 700;
+        color: #ffffff;
+      }
+    }
+
+    .status-badge {
+      font-size: 11px;
+      font-weight: 700;
+      padding: 3px 10px;
+      border-radius: 20px;
+
+      &.pagado {
+        background: rgba(34, 197, 94, 0.15);
+        color: #22c55e;
+        border: 1px solid rgba(34, 197, 94, 0.3);
+      }
+
+      &.pendiente {
+        background: rgba(245, 158, 11, 0.15);
+        color: #f59e0b;
+        border: 1px solid rgba(245, 158, 11, 0.3);
+      }
+    }
+  }
+
+  .record-main-stat {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
     margin-bottom: 14px;
 
-    .head-icon {
+    .plate-badge {
+      background: rgba(0, 195, 255, 0.15);
+      border: 1px solid rgba(0, 195, 255, 0.35);
       color: #38bdf8;
-      font-size: 18px;
+      font-size: 16px;
+      font-weight: 800;
+      padding: 5px 12px;
+      border-radius: 8px;
+      letter-spacing: 0.5px;
     }
 
-    h4 {
-      color: #ffffff;
-      font-size: 14px;
-      font-weight: 700;
-      margin: 0;
+    .amount {
+      font-size: 22px;
+      font-weight: 800;
+      color: #22c55e;
     }
   }
 
-  .record-details {
-    .record-badge-row {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 14px;
+  .record-info-line {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 13px;
+    margin-bottom: 8px;
 
-      .status-tag {
-        font-size: 11px;
-        font-weight: 700;
-        padding: 3px 8px;
-        border-radius: 6px;
-
-        &.pagado {
-          background: rgba(34, 197, 94, 0.2);
-          color: #86efac;
-        }
-
-        &.pendiente {
-          background: rgba(234, 179, 8, 0.2);
-          color: #fef08a;
-        }
-      }
-
-      .amount {
-        font-size: 18px;
-        font-weight: 800;
-        color: #ffffff;
-      }
+    .lbl {
+      color: #94a3b8;
     }
 
-    .record-info-line {
-      display: flex;
-      justify-content: space-between;
-      font-size: 12px;
-      padding: 6px 0;
-      border-bottom: 1px solid rgba(255, 255, 255, 0.04);
-
-      .lbl {
-        color: #94a3b8;
-      }
-
-      strong,
-      span {
-        color: #ffffff;
-      }
+    .val {
+      color: #f8fafc;
+      font-weight: 600;
+      text-align: right;
     }
+  }
 
-    .record-footer {
-      display: flex;
+  .record-footer {
+    margin-top: 14px;
+    padding-top: 10px;
+    border-top: 1px dashed rgba(255, 255, 255, 0.08);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    color: #64748b;
+    font-size: 12px;
+
+    .photo-tag {
+      display: inline-flex;
       align-items: center;
       gap: 4px;
-      margin-top: 12px;
+      color: #38bdf8;
+      background: rgba(0, 195, 255, 0.1);
+      padding: 2px 8px;
+      border-radius: 6px;
       font-size: 11px;
-      color: #64748b;
     }
   }
 
+  .loading-state,
   .no-record {
     text-align: center;
-    padding: 20px 0;
+    padding: 30px 15px;
     color: #64748b;
 
     .water-ico {
-      font-size: 28px;
-      color: rgba(0, 195, 255, 0.3);
-      margin-bottom: 6px;
+      font-size: 36px;
+      color: rgba(0, 195, 255, 0.4);
+      margin-bottom: 8px;
     }
 
     p {
-      font-size: 12px;
       margin: 0;
+      font-size: 13px;
     }
   }
 `;
 
 const InstructionCard = styled.div`
-  background: rgba(15, 23, 42, 0.5);
+  background: rgba(21, 28, 45, 0.5);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
   border: 1px solid rgba(255, 255, 255, 0.06);
-  border-radius: 16px;
-  padding: 18px;
+  border-radius: 18px;
+  padding: 20px;
 
-  h5 {
-    color: #38bdf8;
-    font-size: 13px;
-    font-weight: 700;
-    margin: 0 0 10px 0;
+  .card-top {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 12px;
+
+    .info-icon {
+      color: #38bdf8;
+      font-size: 18px;
+    }
+
+    h5 {
+      margin: 0;
+      font-size: 14px;
+      font-weight: 700;
+      color: #f8fafc;
+    }
   }
 
   ul {
     margin: 0;
-    padding-left: 16px;
+    padding-left: 18px;
     color: #94a3b8;
-    font-size: 12px;
+    font-size: 12.5px;
     line-height: 1.6;
 
     li {
-      margin-bottom: 6px;
-    }
+      margin-bottom: 8px;
 
-    strong {
-      color: #e2e8f0;
+      strong {
+        color: #cbd5e1;
+      }
+
+      &:last-child {
+        margin-bottom: 0;
+      }
     }
   }
 `;

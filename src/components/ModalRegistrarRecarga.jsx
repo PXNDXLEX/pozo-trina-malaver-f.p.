@@ -997,14 +997,16 @@ export function ModalRegistrarRecarga({
                 >
                   <MdArrowBack /> Cambiar Chofer
                 </BtnBackPill>
-                <BtnDangerPill
-                  type="button"
-                  onClick={handleEliminarChofer}
-                  disabled={guardandoInline}
-                  title="Eliminar este chofer del sistema"
-                >
-                  <MdDelete /> Eliminar Chofer
-                </BtnDangerPill>
+                {(user?.role === "administrador" || user?.rol === "administrador") && (
+                  <BtnDangerPill
+                    type="button"
+                    onClick={handleEliminarChofer}
+                    disabled={guardandoInline}
+                    title="Eliminar este chofer del sistema"
+                  >
+                    <MdDelete /> Eliminar Chofer
+                  </BtnDangerPill>
+                )}
                 <CloseBtn onClick={onClose} title="Cerrar modal">
                   <MdClose />
                 </CloseBtn>

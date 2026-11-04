@@ -150,8 +150,12 @@ export function MenuTemplate({ children }) {
           {user?.role === "registrador" ? (
             <>
               <NavLink to="/home" className={location.pathname === "/home" ? "active" : ""}>
-                <MdWaterDrop className="nav-icon" /> Recargar Agua
+                <MdDashboard className="nav-icon" /> Despacho
               </NavLink>
+
+              <BotonModalRecargaNav type="button" onClick={() => setModalRecargaNav(true)}>
+                <MdWaterDrop /> Nueva Recarga
+              </BotonModalRecargaNav>
 
               <NavLink to="/camion" className={location.pathname === "/camion" ? "active" : ""}>
                 <MdLocalShipping className="nav-icon" /> Camiones
@@ -282,9 +286,19 @@ export function MenuTemplate({ children }) {
         {user?.role === "registrador" ? (
           <>
             <NavItemMobile to="/home" className={location.pathname === "/home" ? "active" : ""}>
-              <MdWaterDrop />
-              <span>Recargar</span>
+              <MdDashboard />
+              <span>Despacho</span>
             </NavItemMobile>
+
+            <NavButtonMobile
+              type="button"
+              onClick={() => setModalRecargaNav(true)}
+              style={{ color: "#00c3ff" }}
+              title="Nueva Recarga"
+            >
+              <MdWaterDrop style={{ fontSize: "22px" }} />
+              <span style={{ fontWeight: 700 }}>+ Recarga</span>
+            </NavButtonMobile>
 
             <NavItemMobile to="/camion" className={location.pathname === "/camion" ? "active" : ""}>
               <MdLocalShipping />
