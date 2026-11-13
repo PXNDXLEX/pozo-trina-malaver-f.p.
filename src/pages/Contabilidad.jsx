@@ -7,7 +7,9 @@ export function Contabilidad() {
     <MenuTemplate>
       <Header>
         <h1>📊 Reporte de Contabilidad</h1>
-        <p>Cierre de ventas y rendimiento por chofer (Diario, Semanal, Quincenal y Mensual)</p>
+        
+
+        <p>Cierre de ventas y rendimiento por chofer (Diario, Semanal, Quincenal, Mensual e Historico)</p>
       </Header>
 
       <Section>

@@ -1,6 +1,10 @@
 import React, { useEffect, useState, useMemo } from "react";
 import { MenuTemplate } from "../templates/MenuTemplate";
 import { supabase } from "../supabase/supabase.config";
+import { useAuthStore } from "../store/AuthStore";
+import { ModalRegistrarRecarga } from "../components/ModalRegistrarRecarga";
+import { DashboardRegistrador } from "../components/DashboardRegistrador";
+import { DashboardCamionero } from "../components/DashboardCamionero";
 import {
   BarChart,
   Bar,
@@ -14,12 +18,33 @@ import {
   Legend
 } from "recharts";
 import styled from "styled-components";
-import { MdTrendingUp, MdAttachMoney, MdLocalShipping, MdCalendarToday } from "react-icons/md";
+import { MdTrendingUp, MdAttachMoney, MdLocalShipping, MdCalendarToday, MdWaterDrop } from "react-icons/md";
 
 export function Home() {
+  const user = useAuthStore((state) => state.user);
+
+  // 🎯 Si el usuario es Registrador, renderizar exclusivamente su Dashboard Operativo
+  if (user?.role === "registrador") {
+    return (
+      <MenuTemplate>
+        <DashboardRegistrador />
+      </MenuTemplate>
+    );
+  }
+
+  // 🚚 Si el usuario es Camionero, renderizar su panel con el modal de nueva recarga
+  if (user?.role === "camionero") {
+    return (
+      <MenuTemplate>
+        <DashboardCamionero />
+      </MenuTemplate>
+    );
+  }
+
   const [dataRaw, setDataRaw] = useState([]);
   const [filtroDias, setFiltroDias] = useState(3650); // 3650 = Todo el histórico por defecto
   const [loading, setLoading] = useState(true);
+  const [modalRecargaAbierto, setModalRecargaAbierto] = useState(false);
 
   useEffect(() => {
     fetchVentas();
@@ -33,6 +58,7 @@ export function Home() {
         .select(`
           monto,
           fecha_carga,
+           estatus,
           camiones ( chofer, placa )
         `)
         .order("fecha_carga", { ascending: true });
@@ -56,34 +82,51 @@ export function Home() {
   };
 
   // Procesar datos para gráficos y métricas
+   // Procesar datos para gráficos y métricas
   const { dataBarras, dataLineas, metricas } = useMemo(() => {
     const acumuladorCamiones = {};
     const acumuladorFechas = {};
-    let acumuladoGeneral = 0;
+    let acumuladoIngresosReales = 0;
+    let acumuladoCuentasPorCobrar = 0;
+    let cargasTotalesValidas = 0;
 
     dataRaw.forEach((item) => {
-      const nombreCamion = item.camiones
-        ? `${item.camiones.chofer.trim()} (${item.camiones.placa.trim()})`
-        : "Desconocido";
-
+      // Evaluar estados de pago
+      const esPagado = item.estatus === "pagado";
       const montoNumerico = Number(item.monto) || 0;
-      acumuladoGeneral += montoNumerico;
+      
+      // Contabilizamos el total físico operativo
+      cargasTotalesValidas++;
 
-      if (acumuladorCamiones[nombreCamion]) {
-        acumuladorCamiones[nombreCamion] += montoNumerico;
+      if (esPagado) {
+        // 📌 1. Afecta los ingresos en caja
+        acumuladoIngresosReales += montoNumerico;
+
+        // 📌 2. Acumular para Gráfico de Barras (Ingresos por Chofer/Camión)
+        const nombreCamion = item.camiones
+          ? `${item.camiones.chofer.trim()} (${item.camiones.placa.trim()})`
+          : "Desconocido";
+
+        if (acumuladorCamiones[nombreCamion]) {
+          acumuladorCamiones[nombreCamion] += montoNumerico;
+        } else {
+          acumuladorCamiones[nombreCamion] = montoNumerico;
+        }
+
+        // 📌 3. Acumular para Gráfico de Líneas (Evolución de Caja)
+        const fechaLimpia = item.fecha_carga ? item.fecha_carga.substring(0, 10) : "sin fecha";
+        if (acumuladorFechas[fechaLimpia]) {
+          acumuladorFechas[fechaLimpia] += montoNumerico;
+        } else {
+          acumuladorFechas[fechaLimpia] = montoNumerico;
+        }
       } else {
-        acumuladorCamiones[nombreCamion] = montoNumerico;
-      }
-
-      const fechaLimpia = item.fecha_carga ? item.fecha_carga.substring(0, 10) : "Sin fecha";
-
-      if (acumuladorFechas[fechaLimpia]) {
-        acumuladorFechas[fechaLimpia] += montoNumerico;
-      } else {
-        acumuladorFechas[fechaLimpia] = montoNumerico;
+        // 📌 4. Si no está pagado, se acumula como dinero en la calle
+        acumuladoCuentasPorCobrar += montoNumerico;
       }
     });
 
+    // Mapeo estructurado para Recharts
     const formatoBarras = Object.keys(acumuladorCamiones).map((key) => ({
       camionIdentificador: key,
       montoTotal: acumuladorCamiones[key],
@@ -98,12 +141,14 @@ export function Home() {
       dataBarras: formatoBarras,
       dataLineas: formatoLineas,
       metricas: {
-        totalIngresos: acumuladoGeneral,
-        totalCargas: dataRaw.length,
-        promedio: dataRaw.length > 0 ? (acumuladoGeneral / dataRaw.length).toFixed(2) : "0.00",
+        totalIngresos: acumuladoIngresosReales,       // Caja Real
+        totalDeudas: acumuladoCuentasPorCobrar,       // Cuentas por cobrar
+        totalCargas: cargasTotalesValidas,            // Conteo operativo de camiones
+        promedio: cargasTotalesValidas > 0 ? (acumuladoIngresosReales / cargasTotalesValidas).toFixed(2) : "0.00",
       },
     };
   }, [dataRaw]);
+
 
   // Formateador de moneda en español ($ X.XXX)
   const formatearDinero = (val) => {
@@ -119,18 +164,32 @@ export function Home() {
             <p className="subtitle">Monitoreo operativo y financiero en tiempo real</p>
           </div>
 
-          {/* SELECTOR DE RANGO DE TIEMPO SINCRO */}
-          <FilterControl>
-            <MdCalendarToday className="calendar-icon" />
-            <select value={filtroDias} onChange={(e) => setFiltroDias(Number(e.target.value))}>
-              <option value={3650}>Todo el Histórico</option>
-              <option value={30}>Últimos 30 días</option>
-              <option value={15}>Últimas 2 semanas</option>
-              <option value={7}>Últimos 7 días</option>
-              <option value={1}>Hoy</option>
-            </select>
-          </FilterControl>
+          <HeaderControls>
+            {/* BOTÓN REGISTRAR RECARGA */}
+            <BotonRecarga type="button" onClick={() => setModalRecargaAbierto(true)}>
+              <MdWaterDrop className="btn-icon" /> Registrar Recarga de Agua
+            </BotonRecarga>
+
+            {/* SELECTOR DE RANGO DE TIEMPO SINCRO */}
+            <FilterControl>
+              <MdCalendarToday className="calendar-icon" />
+              <select value={filtroDias} onChange={(e) => setFiltroDias(Number(e.target.value))}>
+                <option value={3650}>Todo el Histórico</option>
+                <option value={30}>Últimos 30 días</option>
+                <option value={15}>Últimas 2 semanas</option>
+                <option value={7}>Últimos 7 días</option>
+                <option value={1}>Hoy</option>
+              </select>
+            </FilterControl>
+          </HeaderControls>
         </HeaderSection>
+
+        {/* MODAL PARA REGISTRAR RECARGA */}
+        <ModalRegistrarRecarga
+          isOpen={modalRecargaAbierto}
+          onClose={() => setModalRecargaAbierto(false)}
+          onRecargaExitosa={fetchVentas}
+        />
 
         {loading ? (
           <LoadingBox>Cargando analíticas del sistema...</LoadingBox>
@@ -262,6 +321,38 @@ const HeaderSection = styled.div`
   .subtitle {
     color: #94a3b8;
     font-size: 14px;
+  }
+`;
+
+const HeaderControls = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+`;
+
+const BotonRecarga = styled.button`
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 18px;
+  background: linear-gradient(135deg, #00c3ff 0%, #0072ff 100%);
+  color: #ffffff;
+  border: none;
+  border-radius: 12px;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 4px 15px rgba(0, 195, 255, 0.35);
+  transition: all 0.2s ease;
+
+  .btn-icon {
+    font-size: 18px;
+  }
+
+  &:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 22px rgba(0, 195, 255, 0.55);
   }
 `;
 
